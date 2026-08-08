@@ -13,7 +13,7 @@ const ASSET_TYPES = {
 
 const DEF = {
   v: 1,
-  profile: { age: 30, retireAge: 60, targetAsset: 2000, targetIncome: 5, monthlyInvest: 3, currency: 'TWD' },
+  profile: { age: 30, gender: '', retireAge: 60, targetAsset: 2000, targetIncome: 5, monthlyInvest: 3, monthlyIncome: 0, monthlyExpense: 0, plans: [], onboarded: false, currency: 'TWD' },
   stocks: [],      // {id,code,name,lots,cost,price,yield,updated}
   assets: [],      // {id,type,name,amount,rate,note}
   realties: [],    // {id,name,buyPrice,loanAmount,rate,years,graceYears,startYear,monthlyPay,marketValue}

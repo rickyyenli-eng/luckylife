@@ -8,56 +8,87 @@ function go(id) {
   render();
 }
 
-/* ---------- 總覽 ---------- */
+/* ---------- 總覽 Dashboard ---------- */
 function renderOverview() {
   const el = document.getElementById('p-overview');
-  const st = totalStock(), ot = totalOther(), re = totalRealtyEquity(), db = totalDebt();
-  const nw = netWorth(), inc = annualIncome();
-  const yrs = yearsToTarget();
-  const tgt = D.profile.targetAsset || 2000;
-  const pct = Math.min(100, liquidAsset() / tgt * 100);
-  const incPct = Math.min(100, (inc / 12) / (D.profile.targetIncome || 5) * 100);
-  const empty = !D.stocks.length && !D.assets.length && !D.realties.length;
+  const st=totalStock(), ot=totalOther(), re_=totalRealtyEquity(), db=totalDebt();
+  const nw=netWorth(), inc=annualIncome(), liq=liquidAsset();
+  const yrs=yearsToTarget(), tgt=D.profile.targetAsset||2000;
+  const pct=Math.min(100,liq/tgt*100), incPct=Math.min(100,(inc/12)/(D.profile.targetIncome||5)*100);
+  const p=D.profile;
+  const cost=D.stocks.reduce((a,s)=>a+stockCost(s),0), pnl=st-cost;
+  const surplus=(p.monthlyIncome||0)-(p.monthlyExpense||0);
+  const empty=!D.stocks.length&&!D.assets.length&&!D.realties.length;
+  if (empty) { el.innerHTML=`<div class="card" style="text-align:center;padding:40px 22px">
+    <div style="font-size:44px;margin-bottom:10px">📊</div>
+    <div style="font-size:19px;font-weight:700;margin-bottom:6px">還沒有任何資料</div>
+    <div style="font-size:13.5px;color:var(--muted);margin-bottom:22px">花 2 分鐘完成設定，立刻看到你的退休倒數</div>
+    <button class="btn b1 full" onclick="startOnboard()">開始引導設定 →</button></div>`; return; }
 
   el.innerHTML = `
     <div class="hero">
       <div class="hl">總淨資產</div>
       <div class="hv">${fmt(nw)}<span class="hu">萬</span></div>
-      <div class="grid">
-        <div class="st"><div class="l">📊 股票</div><div class="v">${fmt(st)}</div></div>
-        <div class="st"><div class="l">💰 其他資產</div><div class="v">${fmt(ot)}</div></div>
-        <div class="st"><div class="l">🏠 不動產淨值</div><div class="v">${fmt(re)}</div></div>
-        <div class="st"><div class="l">💳 負債</div><div class="v dn">${db ? '-' + fmt(db) : '0.0'}</div></div>
+      <div style="font-size:12px;color:var(--soft);margin-top:4px">
+        ${p.age?`${p.age} 歲`:''}${yrs!=null?` · 預估 ${Math.round(p.age+yrs)} 歲達標`:''}${surplus?` · 月結餘 ${fmt(surplus,1)} 萬`:''}
       </div>
     </div>
 
-    ${empty ? `<div class="card"><div class="ct">👋 歡迎使用 AssetFlow</div>
-      <div class="cs">三步驟開始管理你的資產</div>
-      <div style="font-size:14px;line-height:2.1">
-        1️⃣ 到「股票」加入你的台股持股（可自動抓價）<br>
-        2️⃣ 到「其他資產」新增定存、儲蓄險、黃金…<br>
-        3️⃣ 到「不動產」登記房產與貸款<br>
-        4️⃣ 回來看你的退休進度 🎯
-      </div>
-      <button class="btn b1 full" style="margin-top:14px" onclick="go('stocks')">開始新增資產 →</button>
-    </div>` : ''}
+    <div class="dash">
+      <div class="dcard"><div class="dl">📊 股票市值</div><div class="dv">${fmt(st)}</div>
+        <div class="dm ${pnl>=0?'up':'dn'}">${pnl>=0?'▲':'▼'} ${fmt(Math.abs(pnl))} 萬 (${cost?(pnl/cost*100).toFixed(1):0}%)</div></div>
+      <div class="dcard"><div class="dl">💰 其他資產</div><div class="dv">${fmt(ot)}</div>
+        <div class="dm">${D.assets.length} 個項目</div></div>
+      <div class="dcard"><div class="dl">🏠 不動產淨值</div><div class="dv">${fmt(re_)}</div>
+        <div class="dm">${D.realties.length?`貸款餘額 ${fmt0(D.realties.reduce((a,r)=>a+remainLoan(r),0))} 萬`:'尚未登記'}</div></div>
+      <div class="dcard"><div class="dl">🧧 年被動收入</div><div class="dv up">${fmt(inc)}</div>
+        <div class="dm">月均 ${fmt(inc/12,2)} 萬</div></div>
+    </div>
 
     <div class="card">
       <div class="ct">🎯 退休進度</div>
-      <div class="cs">距離目標 ${fmt0(tgt)} 萬 · 月被動收入目標 ${fmt(D.profile.targetIncome, 1)} 萬</div>
-      <div class="mini"><span>可投資資產</span><span><b>${fmt(liquidAsset())}</b> / ${fmt0(tgt)} 萬</span></div>
+      <div class="cs">目標 ${fmt0(tgt)} 萬 · 月被動收入 ${fmt(p.targetIncome,1)} 萬</div>
+      <div class="mini"><span>可投資資產</span><span><b>${fmt(liq)}</b> / ${fmt0(tgt)} 萬</span></div>
       <div class="bar"><div style="width:${pct}%;background:linear-gradient(90deg,var(--gold),var(--gold-d))"></div></div>
-      <div style="font-size:11px;color:var(--soft);margin:3px 0 14px">${pct.toFixed(1)}%${yrs != null ? ` · 依目前配置與月投入，約 <b>${yrs.toFixed(1)} 年</b>達標（${Math.round((D.profile.age||30)+yrs)} 歲）` : ''}</div>
-      <div class="mini"><span>月被動收入</span><span><b>${fmt(inc / 12, 2)}</b> / ${fmt(D.profile.targetIncome, 1)} 萬</span></div>
+      <div style="font-size:11px;color:var(--soft);margin:3px 0 14px">${pct.toFixed(1)}%${yrs!=null?` · 約 <b>${yrs.toFixed(1)} 年</b>達標`:' · 請到設定填入每月可投入金額'}</div>
+      <div class="mini"><span>月被動收入</span><span><b>${fmt(inc/12,2)}</b> / ${fmt(p.targetIncome,1)} 萬</span></div>
       <div class="bar"><div style="width:${incPct}%;background:linear-gradient(90deg,#6b9b7e,var(--green))"></div></div>
-      <div style="font-size:11px;color:var(--soft);margin-top:3px">年被動收入 ${fmt(inc)} 萬 · 加權年報酬估 ${blendedReturn().toFixed(1)}%</div>
+      <div style="font-size:11px;color:var(--soft);margin-top:3px">加權年報酬估 ${blendedReturn().toFixed(1)}%${db?` · 負債 ${fmt(db)} 萬`:''}</div>
     </div>
 
-    ${!empty ? `<div class="card">
+    <div class="card">
       <div class="ct">🥧 資產分布</div><div class="cs">依市值占比</div>
-      ${allocBars()}
-    </div>` : ''}
+      <div class="donut">${donut()}<div class="legend">${legend()}</div></div>
+    </div>
+
+    ${p.plans&&p.plans.length&&!p.plans.includes('none')?`<div class="card">
+      <div class="ct">📅 你的未來計畫</div><div class="cs">記得為這些目標預留資金</div>
+      <div class="ob-chips">${p.plans.map(k=>`<span class="chip on" style="cursor:default">${PLAN_LABELS[k]||k}</span>`).join('')}</div>
+    </div>`:''}
   `;
+}
+const PLAN_LABELS={buy:'🏠 買房',car:'🚗 買車',marry:'💍 結婚',baby:'👶 生小孩',study:'🎓 進修',travel:'✈️ 旅遊基金',parent:'👵 奉養父母'};
+
+function allocRows(){
+  const rows=[]; const st=totalStock(), re_=totalRealtyEquity();
+  if(st) rows.push(['📊 股票',st,'#1a5276']);
+  D.assets.forEach(a=>{const t=ASSET_TYPES[a.type]||ASSET_TYPES.other; rows.push([`${t.icon} ${a.name}`,a.amount||0,t.color]);});
+  if(re_) rows.push(['🏠 不動產淨值',re_,'#c0673f']);
+  return rows.sort((a,b)=>b[1]-a[1]);
+}
+function donut(){
+  const rows=allocRows(), tot=rows.reduce((a,r)=>a+r[1],0);
+  if(!tot) return '';
+  const R=52,C=2*Math.PI*R; let off=0;
+  const segs=rows.map(([n,v,c])=>{const len=v/tot*C; const s=`<circle cx="60" cy="60" r="${R}" fill="none" stroke="${c}" stroke-width="15" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 60 60)"/>`; off+=len; return s;}).join('');
+  return `<svg viewBox="0 0 120 120" style="width:120px;height:120px">${segs}
+    <text x="60" y="56" text-anchor="middle" font-size="10" fill="#a89886">總資產</text>
+    <text x="60" y="72" text-anchor="middle" font-size="17" font-weight="800" fill="#3d2818">${fmt0(tot)}</text></svg>`;
+}
+function legend(){
+  const rows=allocRows(), tot=rows.reduce((a,r)=>a+r[1],0);
+  if(!tot) return '<div class="empty">尚無資料</div>';
+  return rows.map(([n,v,c])=>`<div class="lg"><span class="sw" style="background:${c}"></span>${n}<span class="lv">${(v/tot*100).toFixed(1)}%</span></div>`).join('');
 }
 
 function allocBars() {
@@ -308,6 +339,10 @@ function renderSettings() {
         <div class="fg"><label class="fl">目標月被動收入（萬）</label><input class="fi" type="number" step="0.5" value="${p.targetIncome}" onchange="setP('targetIncome',this.value)"></div>
         <div class="fg"><label class="fl">每月可投入（萬）</label><input class="fi" type="number" step="0.5" value="${p.monthlyInvest}" onchange="setP('monthlyInvest',this.value)"></div>
       </div>
+      <div class="row">
+        <div class="fg"><label class="fl">月收入（萬）</label><input class="fi" type="number" step="0.5" value="${p.monthlyIncome||''}" onchange="setP('monthlyIncome',this.value)"></div>
+        <div class="fg"><label class="fl">月支出（萬）</label><input class="fi" type="number" step="0.5" value="${p.monthlyExpense||''}" onchange="setP('monthlyExpense',this.value)"></div>
+      </div>
     </div>
     <div class="card">
       <div class="ct">💳 負債 <button class="btn b1 bs" onclick="debtForm()">+ 新增</button></div>
@@ -326,7 +361,8 @@ function renderSettings() {
         <button class="btn b2" style="flex:1" onclick="document.getElementById('impFile').click()">⬆ 匯入 JSON</button>
       </div>
       <input type="file" id="impFile" accept=".json" style="display:none" onchange="impJson(this)">
-      <button class="btn b3 full" style="margin-top:8px;color:var(--red)" onclick="resetAll()">🗑 清除所有資料</button>
+      <button class="btn b2 full" style="margin-top:8px" onclick="startOnboard()">🧭 重新執行引導設定</button>
+      <button class="btn b3 full" style="margin-top:6px;color:var(--red)" onclick="resetAll()">🗑 清除所有資料</button>
     </div>`;
 }
 function setP(k, v) { D.profile[k] = parseFloat(v) || 0; save(); render(); }
@@ -395,4 +431,5 @@ document.addEventListener('DOMContentLoaded', () => {
   load();
   document.querySelectorAll('.tab').forEach(b => b.onclick = () => go(b.dataset.p));
   render();
+  if (needOnboard()) setTimeout(startOnboard, 400);
 });
