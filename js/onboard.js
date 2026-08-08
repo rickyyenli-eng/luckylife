@@ -110,9 +110,10 @@ function renderOb() {
       <h2>你的退休目標</h2>
       <p class="ob-sub">可以先隨意填，之後隨時能改</p>
       <div class="row">
+        <div class="fg"><label class="fl">希望幾歲退休</label><input class="fi" type="number" id="o_ra" value="${d.retireAge||Math.max((d.age||30)+10,55)}" min="${(d.age||30)+1}" max="90"></div>
         <div class="fg"><label class="fl">目標資產（萬）</label><input class="fi" type="number" step="100" id="o_ta" value="${d.targetAsset||2000}"></div>
-        <div class="fg"><label class="fl">目標月被動收入（萬）</label><input class="fi" type="number" step="0.5" id="o_ti" value="${d.targetIncome||5}"></div>
       </div>
+      <div class="fg"><label class="fl">目標月被動收入（萬）</label><input class="fi" type="number" step="0.5" id="o_ti" value="${d.targetIncome||5}"></div>
       <div class="fg"><label class="fl">每月可投入（萬）</label><input class="fi" type="number" step="0.5" id="o_mi" value="${d.monthlyInvest ?? Math.max(0,(d.income||0)-(d.expense||0))}"></div>
       <div class="ob-hint">💡 依你填的收支，每月結餘約 ${fmt(Math.max(0,(d.income||0)-(d.expense||0)),1)} 萬</div>`; break;
   }
@@ -179,14 +180,14 @@ function obSave() {
           phases: gr>0 ? [{y1:1,y2:gr,rate,grace:true},{y1:gr+1,y2:yrs,rate}] : [{y1:1,y2:yrs,rate}] };
       } else d.realty = null;
       break;
-    case 7: d.targetAsset=parseFloat(g('o_ta').value)||2000; d.targetIncome=parseFloat(g('o_ti').value)||5; d.monthlyInvest=parseFloat(g('o_mi').value)||0; break;
+    case 7: d.retireAge=parseInt(g('o_ra').value)||60; d.targetAsset=parseFloat(g('o_ta').value)||2000; d.targetIncome=parseFloat(g('o_ti').value)||5; d.monthlyInvest=parseFloat(g('o_mi').value)||0; break;
   }
   obNext();
 }
 
 async function finishOb() {
   const d = OB.data;
-  D.profile = { ...D.profile, age:d.age||30, gender:d.gender||'', monthlyIncome:d.income||0, monthlyExpense:d.expense||0,
+  D.profile = { ...D.profile, age:d.age||30, gender:d.gender||'', retireAge:d.retireAge||60, monthlyIncome:d.income||0, monthlyExpense:d.expense||0,
     monthlyInvest:d.monthlyInvest??Math.max(0,(d.income||0)-(d.expense||0)), targetAsset:d.targetAsset||2000,
     targetIncome:d.targetIncome||5, plans:d.plans||[], onboarded:true };
   d.stocks.forEach(s=>D.stocks.push({id:uid('s'),code:s.code,name:'',lots:s.lots,cost:s.cost,price:0,yield:0}));

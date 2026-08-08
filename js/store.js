@@ -160,6 +160,23 @@ function blendedReturn() {
   D.assets.forEach(x => { w += (x.amount || 0) * (x.rate || 0); });
   return w / tot;
 }
+/* 若要在指定年數內達標，每月需投入多少（萬） */
+function requiredMonthly(years) {
+  const target = D.profile.targetAsset || 2000;
+  const cur = liquidAsset();
+  const n = Math.max(1, Math.round(years * 12));
+  const rm = blendedReturn() / 100 / 12;
+  const fv = cur * Math.pow(1 + rm, n);
+  if (fv >= target) return 0;
+  const need = target - fv;
+  if (rm === 0) return need / n;
+  return need * rm / (Math.pow(1 + rm, n) - 1);
+}
+/* 目標退休年齡剩餘年數 */
+function yearsToRetire() {
+  const a = D.profile.age || 0, r = D.profile.retireAge || 0;
+  return r > a ? r - a : null;
+}
 // 幾年達標
 function yearsToTarget() {
   const target = D.profile.targetAsset || 2000;

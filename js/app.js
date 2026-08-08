@@ -56,6 +56,7 @@ function renderOverview() {
       <div class="mini"><span>可投資資產</span><span><b>${fmt(liq)}</b> / ${fmt0(tgt)} 萬</span></div>
       <div class="bar"><div style="width:${pct}%;background:linear-gradient(90deg,var(--gold),var(--gold-d))"></div></div>
       <div style="font-size:11px;color:var(--soft);margin:3px 0 14px">${pct.toFixed(1)}%${yrs!=null?` · 約 <b>${yrs.toFixed(1)} 年</b>達標`:' · 請到設定填入每月可投入金額'}</div>
+      ${retireGap()}
       <div class="mini"><span>月被動收入</span><span><b>${fmt(inc/12,2)}</b> / ${fmt(p.targetIncome,1)} 萬</span></div>
       <div class="bar"><div style="width:${incPct}%;background:linear-gradient(90deg,#6b9b7e,var(--green))"></div></div>
       <div style="font-size:11px;color:var(--soft);margin-top:3px">加權年報酬估 ${blendedReturn().toFixed(1)}%${db?` · 負債 ${fmt(db)} 萬`:''}</div>
@@ -116,6 +117,23 @@ function footer() {
     <span style="opacity:.8">資料儲存於使用者本機瀏覽器，本站不蒐集、不上傳任何個人資料。</span><br>
     <a href="https://rickyyenli-eng.github.io/moonlight-tarot/index.html" target="_blank" rel="noopener" style="color:var(--gold-d)">🌙 Moonlight Tarot</a>
   </div>`;
+}
+
+/* 目標退休年齡 vs 預估達標 */
+function retireGap() {
+  const p = D.profile, want = yearsToRetire(), got = yearsToTarget();
+  if (!want) return '';
+  if (got == null) return `<div style="font-size:12px;background:var(--bg);border-radius:9px;padding:10px 12px;margin-bottom:14px">🎯 目標 <b>${p.retireAge} 歲</b>退休（還有 ${want} 年）· 填入每月可投入金額後即可試算是否跟得上</div>`;
+  const gap = got - want;
+  const need = requiredMonthly(want);
+  const now = p.monthlyInvest || 0;
+  if (gap <= 0) {
+    return `<div style="font-size:12px;background:var(--green-l);border-radius:9px;padding:11px 13px;margin-bottom:14px;line-height:1.8">
+      ✅ <b>進度超前</b>：目標 ${p.retireAge} 歲退休（還有 ${want} 年），預估 <b>${got.toFixed(1)} 年</b>就能達標，提前約 ${Math.abs(gap).toFixed(1)} 年。</div>`;
+  }
+  return `<div style="font-size:12px;background:#fff8e6;border-radius:9px;padding:11px 13px;margin-bottom:14px;line-height:1.8">
+    ⏳ <b>目標 ${p.retireAge} 歲</b>退休（還有 ${want} 年），但以目前每月投入 ${fmt(now,1)} 萬推估需 <b>${got.toFixed(1)} 年</b>，慢了 ${gap.toFixed(1)} 年。<br>
+    💡 若要準時達標，每月需投入約 <b>${fmt(need,1)} 萬</b>（多 ${fmt(Math.max(0,need-now),1)} 萬）；或把目標調整為 ${Math.round(p.age+got)} 歲。</div>`;
 }
 
 const PLAN_LABELS={buy:'🏠 買房',car:'🚗 買車',marry:'💍 結婚',baby:'👶 生小孩',study:'🎓 進修',travel:'✈️ 旅遊基金',parent:'👵 奉養父母'};
@@ -425,21 +443,9 @@ function renderDividends() {
   const el = document.getElementById('p-dividends');
   const withDiv = D.stocks.filter(s => s.lastDivDate || s.yield);
   const annual = D.stocks.reduce((a,s)=>a+annualDivEst(s)*(s.lots||0)*1000/10000, 0);
-  // 預估未來 12 個月配息行事曆
+  // 依歷史「除息月份 + 當月典型日期」歸納推估（非等距外推）
   const cal = [];
-  D.stocks.forEach(s => {
-    if (!s.lastDivDate || !s.freq) return;
-    const gap = 365/s.freq;
-    const per = perDivEst(s);
-    let d = new Date(s.lastDivDate*1000);
-    for (let i=0;i<s.freq+1;i++) {
-      d = new Date(d.getTime()+gap*86400000);
-      if (d > new Date() && d < new Date(Date.now()+400*86400000)) {
-        cal.push({ code:s.code, ex:d, pay:new Date(d.getTime()+38*86400000),
-                   amt:per*(s.lots||0)*1000, per, src:s.divOverride?'自訂':'最近一次', est:true });
-      }
-    }
-  });
+  D.stocks.forEach(s => { buildSchedule(s).forEach(x => cal.push(x)); });
   cal.sort((a,b)=>a.ex-b.ex);
   const next12 = cal.reduce((a,c)=>a+c.amt,0);
   const logTotal = (D.dividends||[]).reduce((a,d)=>a+d.amount,0);
@@ -448,15 +454,15 @@ function renderDividends() {
   el.innerHTML = `
     <div class="dash">
       <div class="dcard"><div class="dl">🧧 預估年配息</div><div class="dv up">${fmt(annual)}</div><div class="dm">月均 ${fmt(annual/12,2)} 萬</div></div>
-      <div class="dcard"><div class="dl">📅 未來12月預估</div><div class="dv">${fmt0(next12/10000)}</div><div class="dm">萬元 · ${cal.length} 次配息</div></div>
+      <div class="dcard"><div class="dl">📅 年底前可領</div><div class="dv">${fmt0(next12/10000)}</div><div class="dm">萬元 · 還有 ${cal.length} 次配息</div></div>
       <div class="dcard"><div class="dl">💰 今年已領</div><div class="dv">${fmt0(thisYear/10000)}</div><div class="dm">萬元</div></div>
       <div class="dcard"><div class="dl">📜 累計已領</div><div class="dv">${fmt0(logTotal/10000)}</div><div class="dm">萬元</div></div>
     </div>
 
     <div class="card">
-      <div class="ct">📅 配息行事曆</div>
-      <div class="cs">依各檔歷史配息頻率與金額推估 · 發放日約除息後 38 天（台股實務約 30~45 天）</div>
-      ${cal.length ? cal.slice(0,10).map(c=>{
+      <div class="ct">📅 配息行事曆 <span style="font-size:11.5px;font-weight:400;color:var(--soft)">${new Date().getFullYear()} 年剩餘</span></div>
+      <div class="cs">程式從歷史除息紀錄歸納「月份規律＋典型日期」推估，非等距外推 · 發放日約除息後 38 天</div>
+      ${cal.length ? cal.map(c=>{
         const days = Math.ceil((c.ex-new Date())/86400000);
         return `<div class="item">
           <span class="dot" style="background:${days<=14?'var(--gold)':'var(--line)'}"></span>
@@ -464,8 +470,8 @@ function renderDividends() {
           <div class="m">除息 ${c.ex.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})} · 入帳 ${c.pay.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})} · ${days} 天後</div></div>
           <div class="r"><div class="v up">${fmt0(c.amt)}</div><div style="font-size:10px;color:var(--soft)">元</div></div>
         </div>`;
-      }).join('') : '<div class="empty">尚無資料<br>請先到「股票」按更新，系統會自動抓取配息歷史</div>'}
-      <div style="font-size:11px;color:var(--soft);margin-top:8px">※ 金額以<b>最近一次實際配息</b>推估，日期依歷史頻率估算；實際請以各投信公告為準<br>※ 投信已公告下期金額時，可到「股票」編輯該檔的「下期配息」欄位手動覆寫</div>
+      }).join('') : `<div class="empty">${D.stocks.some(x=>x.lastDivDate)?'今年剩餘期間已無預估配息 🎉<br><span style="font-size:11px">明年度行事曆將於跨年後自動顯示</span>':'尚無資料<br>請先到「股票」按更新，系統會自動抓取配息歷史'}</div>`}
+      <div style="font-size:11px;color:var(--soft);margin-top:8px">※ <b>日期</b>：從歷史歸納各檔固定除息月份與典型日（0050 為 1、7 月；0056 為 1、4、7、10 月；00878 為 2、5、8、11 月；00919 為 3、6、9、12 月）<br>※ <b>金額</b>：以最近一次實際配息為基準，再乘上該月的季節性係數（部分 ETF 各季配息高低不同）<br>※ 投信公告後可到「股票 → 編輯 → 下期配息」手動覆寫；本表僅為推估，實際以投信公告為準</div>
     </div>
 
     <div class="card">
@@ -495,6 +501,67 @@ function renderDividends() {
     </div>
   `;
 }
+/* ===== 除息日推估：從歷史歸納「月份規律 + 典型日」=====
+   例：0050 每年 1、7 月；0056 每年 1、4、7、10 月；00919 每年 3、6、9、12 月
+   同一月份的配息金額也各自參考「去年同月」，比用最新一期更貼近實際 */
+function divPattern(s) {
+  const h = (s.divHistory || []).map(d => ({ d: new Date(d.date * 1000), a: d.amount }));
+  if (h.length < 2) return null;
+  const freq = s.freq || 4;
+  const recent = h.slice(-Math.max(freq, 4));               // 至少看最近一輪
+  const byMonth = {};
+  recent.forEach(x => {
+    const m = x.d.getMonth() + 1;
+    if (!byMonth[m]) byMonth[m] = [];
+    byMonth[m].push(x);
+  });
+  const months = Object.keys(byMonth).map(Number).sort((a, b) => a - b);
+  if (!months.length) return null;
+  // 每月典型日 + 季節性係數（該月金額 ÷ 同期平均），用來校正各季配息高低差異
+  const avgRecent = recent.reduce((a, x) => a + x.a, 0) / recent.length;
+  const info = {};
+  months.forEach(m => {
+    const arr = byMonth[m].sort((a, b) => a.d - b.d);
+    const last = arr[arr.length - 1];
+    info[m] = {
+      day: last.d.getDate(),
+      amount: last.a,
+      lastYear: last.d.getFullYear(),
+      season: avgRecent ? last.a / avgRecent : 1,   // >1 = 該季通常配較多
+    };
+  });
+  return { months, info, avgRecent };
+}
+
+/* 產生今年剩餘的除息排程 */
+function buildSchedule(s) {
+  const p = divPattern(s);
+  if (!p) return [];
+  const now = new Date();
+  const Y = now.getFullYear();
+  const yearEnd = new Date(Y, 11, 31, 23, 59);
+  const out = [];
+  p.months.forEach(m => {
+    const inf = p.info[m];
+    const ex = new Date(Y, m - 1, Math.min(inf.day, 28));
+    if (ex <= now || ex > yearEnd) return;                   // 只留今年剩餘、未發生的
+    // 金額：手動覆寫 > 最近一次 × 該月季節性係數（兼顧配息成長趨勢與各季高低差）
+    let per, src;
+    if (s.divOverride) { per = s.divOverride; src = '自訂'; }
+    else {
+      const base = perDivEst(s);                    // 最近一次實際配息
+      const k = inf.season || 1;
+      per = Math.round(base * k * 1000) / 1000;
+      src = Math.abs(k - 1) < 0.03 ? '依最近一次' : `最近一次×${k.toFixed(2)}季節性`;
+    }
+    out.push({
+      code: s.code, ex, pay: new Date(ex.getTime() + 38 * 86400000),
+      amt: per * (s.lots || 0) * 1000, per, src,
+    });
+  });
+  return out;
+}
+
 /* ===== 配息估算規則（全站統一）=====
    每期（行事曆用）：手動覆寫 > 最近一次實際配息
    年度（殖利率/被動收入/貢獻用）：手動×頻率 > 近12個月實際合計 > 最近一次×頻率
@@ -667,7 +734,11 @@ function renderSettings() {
       <div class="ct">🎯 我的目標</div><div class="cs">用於退休試算</div>
       <div class="row">
         <div class="fg"><label class="fl">目前年齡</label><input class="fi" type="number" value="${p.age}" onchange="setP('age',this.value)"></div>
+        <div class="fg"><label class="fl">目標退休年齡</label><input class="fi" type="number" value="${p.retireAge}" onchange="setP('retireAge',this.value)"></div>
+      </div>
+      <div class="row">
         <div class="fg"><label class="fl">目標資產（萬）</label><input class="fi" type="number" step="100" value="${p.targetAsset}" onchange="setP('targetAsset',this.value)"></div>
+        <div class="fg" style="display:none"></div>
       </div>
       <div class="row">
         <div class="fg"><label class="fl">目標月被動收入（萬）</label><input class="fi" type="number" step="0.5" value="${p.targetIncome}" onchange="setP('targetIncome',this.value)"></div>
