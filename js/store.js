@@ -36,7 +36,7 @@ const DEF = {
   profile: { age: 30, gender: '', retireAge: 60, targetAsset: 2000, targetIncome: 5, monthlyInvest: 3, monthlyIncome: 0, monthlyExpense: 0, plans: [], onboarded: false, currency: 'TWD' },
   stocks: [],      // +cagr,totalReturn,freq,lastDivDate,lastDivAmount,divHistory
   assets: [],      // {id,type,name,amount,rate,note,maturity,principal,payout}
-  realties: [],    // {id,name,stage:'presale'|'existing',totalPrice,paidAmount,loanAmount,loanStartYear,years,currentYear,phases:[{y1,y2,rate,grace,pay}]}
+  realties: [],    // +purpose:'self'|'rent', monthlyRent, otherCost, vacancy(月/年)
   liabilities: [], // {id,name,amount,note}
   dividends: [],   // {id,date,code,amount,note}
   updated: null,
@@ -65,6 +65,32 @@ const totalOther = () => D.assets.reduce((a, x) => a + (x.amount || 0), 0);
 const totalRealtyPaid = () => D.realties.reduce((a, r) => a + (r.paidAmount || 0), 0);      // 已付出的自備款/工程款
 const totalRealtyPrice = () => D.realties.reduce((a, r) => a + (r.totalPrice || 0), 0);     // 購買總價
 const totalMortgage = () => D.realties.reduce((a, r) => a + remainLoan(r), 0);              // 貸款餘額
+
+/* ===== 出租現金流 ===== */
+// 年有效租金（扣空置月數）
+function annualRent(r) {
+  if (r.purpose !== 'rent' || !r.monthlyRent) return 0;
+  const eff = 12 - Math.min(11, r.vacancy || 0);
+  return r.monthlyRent * eff;
+}
+// 年持有成本（管理費、稅、修繕）
+const annualRentCost = r => (r.otherCost || 0) * 12;
+// 年房貸支出
+const annualMortgagePay = r => currentMonthlyPay(r) * 12;
+// 年淨現金流（租金 − 成本 − 房貸）
+function netRentFlow(r) {
+  if (r.purpose !== 'rent') return 0;
+  return annualRent(r) - annualRentCost(r) - annualMortgagePay(r);
+}
+// 毛租金報酬率（年租金 ÷ 房價）
+const grossYield = r => (r.totalPrice ? annualRent(r) / r.totalPrice * 100 : 0);
+// 淨租金報酬率（(年租金−成本) ÷ 房價）
+const netYield = r => (r.totalPrice ? (annualRent(r) - annualRentCost(r)) / r.totalPrice * 100 : 0);
+// 自有資金報酬率 Cash-on-Cash（年淨現金流 ÷ 已投入自備款）
+const cashOnCash = r => (r.paidAmount ? netRentFlow(r) / r.paidAmount * 100 : 0);
+// 全部房產彙總
+const totalAnnualRent = () => D.realties.reduce((a, r) => a + annualRent(r), 0);
+const totalNetRentFlow = () => D.realties.reduce((a, r) => a + netRentFlow(r), 0);
 const totalDebt = () => D.liabilities.reduce((a, x) => a + (x.amount || 0), 0);
 const netWorth = () => totalStock() + totalOther() + totalRealtyPaid() - totalDebt();
 const liquidAsset = () => totalStock() + totalOther();
@@ -149,7 +175,8 @@ function annualIncome() {
     ? annualDivEst(s) * (s.lots || 0) * 1000 / 10000
     : stockValue(s) * (s.yield || 0) / 100), 0);
   const oth = D.assets.reduce((a, x) => a + (x.amount || 0) * (x.rate || 0) / 100, 0);
-  return div + oth;
+  const rent = D.realties.reduce((a, r) => a + (r.purpose === 'rent' ? annualRent(r) - annualRentCost(r) : 0), 0);
+  return div + oth + rent;
 }
 // 加權年報酬率
 function blendedReturn() {

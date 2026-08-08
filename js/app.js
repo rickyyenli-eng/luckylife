@@ -47,7 +47,7 @@ function renderOverview() {
       <div class="dcard"><div class="dl">🏠 房產已投入</div><div class="dv">${fmt(re_)}</div>
         <div class="dm">${D.realties.length?`總價 ${fmt0(totalRealtyPrice())} 萬${totalMortgage()?` · 貸款餘額 ${fmt0(totalMortgage())} 萬`:' · 未起貸'}`:'尚未登記'}</div></div>
       <div class="dcard"><div class="dl">🧧 年被動收入</div><div class="dv up">${fmt(inc)}</div>
-        <div class="dm">月均 ${fmt(inc/12,2)} 萬</div></div>
+        <div class="dm">月均 ${fmt(inc/12,2)} 萬${totalAnnualRent()?` · 含租金 ${fmt(totalAnnualRent(),0)} 萬`:''}</div></div>
     </div>
 
     <div class="card">
@@ -614,7 +614,12 @@ function renderRealty() {
   el.innerHTML = `
     <div class="card">
       <div class="ct">🏠 不動產與房貸 <button class="btn b1 bs" onclick="realtyForm()">+ 新增</button></div>
-      <div class="cs">預售屋可先試算未來房貸；成屋可設定分段利率與寬限期</div>
+      <div class="cs">預售屋可先試算未來房貸；成屋可設定分段利率、寬限期與出租收益</div>
+      ${D.realties.some(r=>r.purpose==='rent') ? `<div class="grid" style="margin:0 0 14px">
+        <div class="st"><div class="l">年租金收入</div><div class="v up">${fmt(totalAnnualRent(),1)} 萬</div></div>
+        <div class="st"><div class="l">年淨現金流</div><div class="v ${totalNetRentFlow()>=0?'up':'dn'}">${totalNetRentFlow()>=0?'+':''}${fmt(totalNetRentFlow(),1)} 萬</div></div>
+        <div class="st"><div class="l">出租物件</div><div class="v">${D.realties.filter(r=>r.purpose==='rent').length} 間</div></div>
+      </div>` : ''}
       ${D.realties.length ? D.realties.map(r => realtyCard(r)).join('') : '<div class="empty">還沒有不動產<br>點「+ 新增」登記房產或試算房貸</div>'}
     </div>`;
 }
@@ -628,9 +633,10 @@ function realtyCard(r) {
   const paid = r.paidAmount || 0;
   const pending = Math.max(0, (r.totalPrice||0) - paid - (r.loanAmount||0));
   return `<div style="border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <b style="font-size:16px">${r.name}</b>
       <span class="tag ${isPresale?'tn':'tg'}">${isPresale?'預售屋':'成屋'}</span>
+      ${r.purpose==='rent'?'<span class="tag" style="background:#e3efe7;color:#2d5240">🏘️ 出租中</span>':''}
       ${yNow>0?`<span class="tag tg">第 ${yNow} 年</span>`:''}
       <button class="x" style="margin-left:auto" onclick="realtyForm('${r.id}')">✎</button>
       <button class="x" onclick="del('realties','${r.id}')">×</button>
@@ -642,6 +648,7 @@ function realtyCard(r) {
       <div class="st"><div class="l">${yNow>0?'目前月付':'首期月付'}</div><div class="v">${fmt(yNow>0?payNow:(sim.phases[0]?.monthly||0),2)} 萬</div></div>
     </div>
     ${pending>0?`<div style="font-size:12px;color:var(--gold-d);background:#fdf6ea;border-radius:8px;padding:9px 11px;margin-bottom:12px">⏳ 交屋前尚需自備 <b>${fmt0(pending)} 萬</b>（總價 − 已付 − 貸款）</div>`:''}
+    ${rentBlock(r)}
     ${sim.phases.length?`
       <div class="sec" style="margin:6px 0 8px">📋 還款期程試算</div>
       <div style="overflow-x:auto"><table>
@@ -659,6 +666,32 @@ function realtyCard(r) {
   </div>`;
 }
 
+function rentBlock(r) {
+  if (r.purpose !== 'rent') return '';
+  const yr = annualRent(r), cost = annualRentCost(r), pay = annualMortgagePay(r), net = netRentFlow(r);
+  const gy = grossYield(r), ny = netYield(r), coc = cashOnCash(r);
+  return `<div style="background:linear-gradient(135deg,#eef5f0,#e0ece4);border-radius:11px;padding:14px;margin-bottom:12px">
+    <div style="font-size:13px;font-weight:700;color:#2d5240;margin-bottom:10px">🏘️ 出租現金流</div>
+    <div class="grid" style="margin:0 0 10px">
+      <div class="st" style="background:rgba(255,255,255,.7)"><div class="l">月租金</div><div class="v">${fmt(r.monthlyRent,2)} 萬</div></div>
+      <div class="st" style="background:rgba(255,255,255,.7)"><div class="l">年租金收入</div><div class="v up">${fmt(yr,1)} 萬</div></div>
+      <div class="st" style="background:rgba(255,255,255,.7)"><div class="l">月淨現金流</div><div class="v ${net>=0?'up':'dn'}">${net>=0?'+':''}${fmt(net/12,2)} 萬</div></div>
+      <div class="st" style="background:rgba(255,255,255,.7)"><div class="l">自有資金報酬</div><div class="v ${coc>=0?'up':'dn'}">${coc.toFixed(1)}%</div></div>
+    </div>
+    <div style="overflow-x:auto"><table style="font-size:12.5px">
+      <tr><td>年租金收入${r.vacancy?`（已扣 ${r.vacancy} 個月空置）`:''}</td><td class="up">+${fmt(yr,1)} 萬</td></tr>
+      ${cost?`<tr><td>持有成本（管理費/稅/修繕）</td><td class="dn">−${fmt(cost,1)} 萬</td></tr>`:''}
+      ${pay?`<tr><td>房貸年支出</td><td class="dn">−${fmt(pay,1)} 萬</td></tr>`:''}
+      <tr><td><b>年淨現金流</b></td><td><b class="${net>=0?'up':'dn'}">${net>=0?'+':''}${fmt(net,1)} 萬</b></td></tr>
+    </table></div>
+    <div style="font-size:11.5px;color:#4a7a62;margin-top:9px;line-height:1.8">
+      毛租金報酬率 <b>${gy.toFixed(2)}%</b>（年租金÷房價） · 淨租金報酬率 <b>${ny.toFixed(2)}%</b>
+      ${r.paidAmount?`<br>自有資金報酬率 Cash-on-Cash <b>${coc.toFixed(1)}%</b>（年淨現金流 ÷ 已投入 ${fmt0(r.paidAmount)} 萬）`:''}
+      ${net<0?`<br>⚠️ 目前為<b>負現金流</b>，每月需自掏 ${fmt(Math.abs(net)/12,2)} 萬補貼房貸`:''}
+    </div>
+  </div>`;
+}
+
 let RF_PHASES = [];
 function realtyForm(id) {
   const r = id ? D.realties.find(x=>x.id===id) : null;
@@ -670,10 +703,24 @@ function realtyForm(id) {
         <option value="presale" ${r?.stage!=='existing'?'selected':''}>🏗️ 預售屋（尚未交屋/未起貸）</option>
         <option value="existing" ${r?.stage==='existing'?'selected':''}>🏠 成屋（已交屋，貸款中或即將開始）</option>
       </select></div>
+    <div class="fg"><label class="fl">用途</label>
+      <select class="fi" id="f_purpose" onchange="rfPurpose()">
+        <option value="self" ${r?.purpose!=='rent'?'selected':''}>🏠 自住</option>
+        <option value="rent" ${r?.purpose==='rent'?'selected':''}>🏘️ 出租（收租金）</option>
+      </select></div>
     <div class="fg"><label class="fl">名稱 *</label><input class="fi" id="f_name" value="${r?.name||''}" placeholder="如：台中自住宅"></div>
     <div class="row">
       <div class="fg"><label class="fl">購買總價（萬）*</label><input class="fi" type="number" id="f_total" value="${r?.totalPrice??''}"></div>
       <div class="fg"><label class="fl">已付款（萬）</label><input class="fi" type="number" id="f_paid" value="${r?.paidAmount??''}" placeholder="頭期+工程款"></div>
+    </div>
+    <div id="f_rentwrap" style="display:${r?.purpose==='rent'?'block':'none'}">
+      <div class="sec">🏘️ 出租收入</div>
+      <div class="row">
+        <div class="fg"><label class="fl">月租金（萬）</label><input class="fi" type="number" step="0.1" id="f_rent" value="${r?.monthlyRent??''}" placeholder="如 2.5"></div>
+        <div class="fg"><label class="fl">月持有成本（萬）</label><input class="fi" type="number" step="0.1" id="f_ocost" value="${r?.otherCost??''}" placeholder="管理費/稅/修繕"></div>
+      </div>
+      <div class="fg"><label class="fl">年空置月數</label><input class="fi" type="number" id="f_vac" value="${r?.vacancy??1}" min="0" max="11">
+        <div style="font-size:11px;color:var(--soft);margin-top:4px">保守估 1~2 個月（換租客、裝修空窗），系統會自動從年租金扣除</div></div>
     </div>
     <div class="sec">💰 貸款試算</div>
     <div class="row">
@@ -690,6 +737,10 @@ function realtyForm(id) {
     rfSync();
     const o = r || { id: uid('r') };
     o.stage=document.getElementById('f_stage').value;
+    o.purpose=document.getElementById('f_purpose').value;
+    o.monthlyRent=parseFloat(document.getElementById('f_rent')?.value)||0;
+    o.otherCost=parseFloat(document.getElementById('f_ocost')?.value)||0;
+    o.vacancy=parseInt(document.getElementById('f_vac')?.value)||0;
     o.name=name; o.totalPrice=total;
     o.paidAmount=parseFloat(document.getElementById('f_paid').value)||0;
     o.loanAmount=parseFloat(document.getElementById('f_loan').value)||0;
@@ -702,6 +753,10 @@ function realtyForm(id) {
   rfRender();
 }
 function rfStage(){}
+function rfPurpose(){
+  const w=document.getElementById('f_rentwrap');
+  if(w) w.style.display = document.getElementById('f_purpose').value==='rent' ? 'block' : 'none';
+}
 function rfRender() {
   const box=document.getElementById('f_phases');
   if(!box) return;

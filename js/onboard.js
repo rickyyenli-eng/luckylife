@@ -7,7 +7,13 @@ function needOnboard() {
 }
 
 function startOnboard() {
-  OB = { step: 1, data: { age: 30, gender: '', hasAsset: '', stocks: [], assets: [], realty: null, expense: 3, plans: [] } };
+  // 若已有資料，先確認要覆蓋還是取消（避免重複新增）
+  const hasData = D.stocks.length || D.assets.length || D.realties.length;
+  if (hasData) {
+    if (!confirm('重新執行引導設定會「取代」目前的持股、其他資產與不動產資料。\n\n建議先到「設定 → 匯出 JSON」備份。\n\n確定要重新設定嗎？')) return;
+  }
+  OB = { step: 1, replace: !!hasData,
+         data: { age: '', gender: '', stocks: [], assets: [], realty: null, plans: [] } };
   renderOb();
 }
 
@@ -28,7 +34,7 @@ function renderOb() {
       <h2>先認識一下你</h2>
       <p class="ob-sub">這些資料只存在你的手機/電腦，不會上傳</p>
       <div class="row">
-        <div class="fg"><label class="fl">目前年齡</label><input class="fi" type="number" id="o_age" value="${d.age}" min="15" max="90"></div>
+        <div class="fg"><label class="fl">目前年齡</label><input class="fi" type="number" id="o_age" value="${d.age||''}" placeholder="例：35" min="15" max="90"></div>
         <div class="fg"><label class="fl">性別（選填）</label>
           <select class="fi" id="o_gender">
             <option value="">不提供</option><option value="m" ${d.gender==='m'?'selected':''}>男性</option>
@@ -75,11 +81,18 @@ function renderOb() {
       <div class="ob-icon">🏠</div>
       <h2>有房子或預售屋嗎？</h2>
       <p class="ob-sub">沒有的話直接按「下一步」跳過</p>
-      <div class="fg"><label class="fl">房產類型</label><select class="fi" id="o_rs">
-        <option value="">沒有房產</option>
-        <option value="presale" ${d.realty?.stage==='presale'?'selected':''}>🏗️ 預售屋（未交屋、未起貸）</option>
-        <option value="existing" ${d.realty?.stage==='existing'?'selected':''}>🏠 成屋（已交屋）</option>
-      </select></div>
+      <div class="row">
+        <div class="fg"><label class="fl">房產類型</label><select class="fi" id="o_rs">
+          <option value="">沒有房產</option>
+          <option value="presale" ${d.realty?.stage==='presale'?'selected':''}>🏗️ 預售屋</option>
+          <option value="existing" ${d.realty?.stage==='existing'?'selected':''}>🏠 成屋</option>
+        </select></div>
+        <div class="fg"><label class="fl">用途</label><select class="fi" id="o_rpp">
+          <option value="self" ${d.realty?.purpose!=='rent'?'selected':''}>🏠 自住</option>
+          <option value="rent" ${d.realty?.purpose==='rent'?'selected':''}>🏘️ 出租</option>
+        </select></div>
+      </div>
+      <div class="fg"><label class="fl">月租金（萬，出租才填）</label><input class="fi" type="number" step="0.1" id="o_rrent" value="${d.realty?.monthlyRent||''}" placeholder="如 2.5"></div>
       <div class="fg"><label class="fl">名稱</label><input class="fi" id="o_rn" value="${d.realty?.name||''}" placeholder="如：自住宅"></div>
       <div class="row">
         <div class="fg"><label class="fl">購買總價（萬）</label><input class="fi" type="number" id="o_rb" value="${d.realty?.totalPrice||''}"></div>
@@ -174,7 +187,8 @@ function obSave() {
       const stage = g('o_rs').value;
       if (stage && g('o_rn').value.trim() && parseFloat(g('o_rb').value)) {
         const rate = parseFloat(g('o_rr').value)||2.1, yrs = parseInt(g('o_ry').value)||30, gr = parseInt(g('o_rg').value)||0;
-        d.realty = { stage, name:g('o_rn').value.trim(), totalPrice:parseFloat(g('o_rb').value),
+        d.realty = { stage, purpose:g('o_rpp').value, monthlyRent:parseFloat(g('o_rrent').value)||0, vacancy:1,
+          name:g('o_rn').value.trim(), totalPrice:parseFloat(g('o_rb').value),
           paidAmount:parseFloat(g('o_rp').value)||0, loanAmount:parseFloat(g('o_rl').value)||0,
           years:yrs, loanStartYear:parseInt(g('o_rsy').value)||new Date().getFullYear(),
           phases: gr>0 ? [{y1:1,y2:gr,rate,grace:true},{y1:gr+1,y2:yrs,rate}] : [{y1:1,y2:yrs,rate}] };
@@ -187,9 +201,11 @@ function obSave() {
 
 async function finishOb() {
   const d = OB.data;
-  D.profile = { ...D.profile, age:d.age||30, gender:d.gender||'', retireAge:d.retireAge||60, monthlyIncome:d.income||0, monthlyExpense:d.expense||0,
+  D.profile = { ...D.profile, age:parseInt(d.age)||30, gender:d.gender||'', retireAge:d.retireAge||60, monthlyIncome:d.income||0, monthlyExpense:d.expense||0,
     monthlyInvest:d.monthlyInvest??Math.max(0,(d.income||0)-(d.expense||0)), targetAsset:d.targetAsset||2000,
     targetIncome:d.targetIncome||5, plans:d.plans||[], onboarded:true };
+  // 重新引導時取代原資料，避免重複
+  if (OB.replace) { D.stocks = []; D.assets = []; D.realties = []; }
   d.stocks.forEach(s=>D.stocks.push({id:uid('s'),code:s.code,name:'',lots:s.lots,cost:s.cost,price:0,yield:0}));
   d.assets.forEach(a=>D.assets.push({id:uid('a'),type:a.type,name:ASSET_TYPES[a.type].name,amount:a.amount,rate:a.rate,note:''}));
   if (d.realty) D.realties.push({id:uid('r'),...d.realty});
