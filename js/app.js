@@ -11,7 +11,7 @@ function go(id) {
 /* ---------- 總覽 Dashboard ---------- */
 function renderOverview() {
   const el = document.getElementById('p-overview');
-  const st=totalStock(), ot=totalOther(), re_=totalRealtyEquity(), db=totalDebt();
+  const st=totalStock(), ot=totalOther(), re_=totalRealtyPaid(), db=totalDebt();
   const nw=netWorth(), inc=annualIncome(), liq=liquidAsset();
   const yrs=yearsToTarget(), tgt=D.profile.targetAsset||2000;
   const pct=Math.min(100,liq/tgt*100), incPct=Math.min(100,(inc/12)/(D.profile.targetIncome||5)*100);
@@ -39,8 +39,8 @@ function renderOverview() {
         <div class="dm ${pnl>=0?'up':'dn'}">${pnl>=0?'▲':'▼'} ${fmt(Math.abs(pnl))} 萬 (${cost?(pnl/cost*100).toFixed(1):0}%)</div></div>
       <div class="dcard"><div class="dl">💰 其他資產</div><div class="dv">${fmt(ot)}</div>
         <div class="dm">${D.assets.length} 個項目</div></div>
-      <div class="dcard"><div class="dl">🏠 不動產淨值</div><div class="dv">${fmt(re_)}</div>
-        <div class="dm">${D.realties.length?`貸款餘額 ${fmt0(D.realties.reduce((a,r)=>a+remainLoan(r),0))} 萬`:'尚未登記'}</div></div>
+      <div class="dcard"><div class="dl">🏠 房產已投入</div><div class="dv">${fmt(re_)}</div>
+        <div class="dm">${D.realties.length?`總價 ${fmt0(totalRealtyPrice())} 萬${totalMortgage()?` · 貸款餘額 ${fmt0(totalMortgage())} 萬`:' · 未起貸'}`:'尚未登記'}</div></div>
       <div class="dcard"><div class="dl">🧧 年被動收入</div><div class="dv up">${fmt(inc)}</div>
         <div class="dm">月均 ${fmt(inc/12,2)} 萬</div></div>
     </div>
@@ -70,10 +70,10 @@ function renderOverview() {
 const PLAN_LABELS={buy:'🏠 買房',car:'🚗 買車',marry:'💍 結婚',baby:'👶 生小孩',study:'🎓 進修',travel:'✈️ 旅遊基金',parent:'👵 奉養父母'};
 
 function allocRows(){
-  const rows=[]; const st=totalStock(), re_=totalRealtyEquity();
+  const rows=[]; const st=totalStock(), re_=totalRealtyPaid();
   if(st) rows.push(['📊 股票',st,'#1a5276']);
   D.assets.forEach(a=>{const t=ASSET_TYPES[a.type]||ASSET_TYPES.other; rows.push([`${t.icon} ${a.name}`,a.amount||0,t.color]);});
-  if(re_) rows.push(['🏠 不動產淨值',re_,'#c0673f']);
+  if(re_) rows.push(['🏠 房產已投入',re_,'#c0673f']);
   return rows.sort((a,b)=>b[1]-a[1]);
 }
 function donut(){
@@ -117,31 +117,82 @@ function renderStocks() {
   el.innerHTML = `
     <div class="card">
       <div class="ct">📊 台股持股 <button class="btn b1 bs" onclick="stockForm()">+ 新增</button></div>
-      <div class="cs">上市櫃個股與 ETF 皆可 · 單位「張」（1張=1000股）</div>
+      <div class="cs">上市櫃個股與 ETF · 單位「張」（1張=1000股）</div>
       ${D.stocks.length ? `
         <div class="grid" style="margin:0 0 14px">
           <div class="st"><div class="l">總市值</div><div class="v">${fmt(tot)} 萬</div></div>
           <div class="st"><div class="l">總成本</div><div class="v">${fmt(cost)} 萬</div></div>
-          <div class="st"><div class="l">未實現損益</div><div class="v ${pnl >= 0 ? 'up' : 'dn'}">${pnl >= 0 ? '+' : ''}${fmt(pnl)} 萬</div></div>
-          <div class="st"><div class="l">報酬率</div><div class="v ${pnl >= 0 ? 'up' : 'dn'}">${cost ? (pnl / cost * 100).toFixed(1) : '0.0'}%</div></div>
+          <div class="st"><div class="l">未實現損益</div><div class="v ${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}${fmt(pnl)} 萬</div></div>
+          <div class="st"><div class="l">報酬率</div><div class="v ${pnl>=0?'up':'dn'}">${cost?(pnl/cost*100).toFixed(1):'0.0'}%</div></div>
         </div>
-        <button class="btn b2 full" id="btnUpd" onclick="doUpdate()">🔄 更新股價（Yahoo）</button>
+        <button class="btn b2 full" id="btnUpd" onclick="doUpdate()">🔄 更新股價 · 股利 · 歷史報酬</button>
         <div style="overflow-x:auto;margin-top:14px"><table>
-          <tr><th>代號/名稱</th><th>張</th><th>成本</th><th>現價</th><th>市值(萬)</th><th>損益</th><th></th></tr>
+          <tr><th>代號</th><th>張</th><th>成本</th><th>現價</th><th>市值</th><th>損益</th><th>殖利率</th><th></th></tr>
           ${D.stocks.map(s => {
-            const v = stockValue(s), c = stockCost(s), p = c ? (v - c) / c * 100 : 0;
+            const v = stockValue(s), c = stockCost(s), p = c ? (v-c)/c*100 : 0;
             return `<tr>
-              <td><b>${s.code}</b><div style="font-size:11px;color:var(--soft)">${s.name || ''}</div></td>
-              <td>${fmt(s.lots, 3).replace(/\.?0+$/, '')}</td><td>${fmt(s.cost, 2)}</td><td>${fmt(s.price, 2)}</td>
+              <td><b>${s.code}</b><div style="font-size:10.5px;color:var(--soft)">${(s.name||'').slice(0,10)}</div></td>
+              <td>${fmt(s.lots,3).replace(/\.?0+$/,'')}</td><td>${fmt(s.cost,2)}</td><td>${fmt(s.price,2)}</td>
               <td><b>${fmt(v)}</b></td>
-              <td class="${p >= 0 ? 'up' : 'dn'}">${p >= 0 ? '+' : ''}${p.toFixed(1)}%</td>
-              <td><button class="x" onclick="stockForm('${s.id}')">✎</button><button class="x" onclick="del('stocks','${s.id}')">×</button></td>
+              <td class="${p>=0?'up':'dn'}">${p>=0?'+':''}${p.toFixed(1)}%</td>
+              <td>${s.yield?s.yield.toFixed(1)+'%':'—'}</td>
+              <td style="white-space:nowrap"><button class="x" onclick="stockForm('${s.id}')">✎</button><button class="x" onclick="del('stocks','${s.id}')">×</button></td>
             </tr>`;
           }).join('')}
         </table></div>
-        <div style="font-size:11px;color:var(--soft);margin-top:10px">💡 殖利率用於被動收入試算，可在編輯中自行填寫</div>
       ` : '<div class="empty">還沒有持股<br>點「+ 新增」加入第一檔</div>'}
-    </div>`;
+    </div>
+
+    ${D.stocks.some(s=>s.cagr!=null) ? `<div class="card">
+      <div class="ct">📈 長期成長分析</div>
+      <div class="cs">依 Yahoo Finance 近 10 年月線計算 · 含息總報酬 = 價格年化成長 + 現金殖利率</div>
+      <div style="overflow-x:auto"><table>
+        <tr><th>標的</th><th>期間</th><th>價格年化</th><th>殖利率</th><th>含息總報酬</th><th>10年區間</th></tr>
+        ${D.stocks.filter(s=>s.cagr!=null).map(s=>`<tr>
+          <td><b>${s.code}</b></td><td>${s.histYears?s.histYears.toFixed(1)+'年':'—'}</td>
+          <td class="${s.cagr>=0?'up':'dn'}">${s.cagr>=0?'+':''}${s.cagr.toFixed(1)}%</td>
+          <td>${s.yield?s.yield.toFixed(1)+'%':'—'}</td>
+          <td><b class="${(s.totalReturn||0)>=0?'up':'dn'}">${(s.totalReturn||0).toFixed(1)}%</b></td>
+          <td style="font-size:11px;color:var(--soft)">${s.low10?fmt(s.low10,1)+'~'+fmt(s.high10,1):'—'}</td>
+        </tr>`).join('')}
+      </table></div>
+      <div class="note" style="margin-top:12px">💡 歷史報酬不代表未來績效，僅供評估標的長期特性參考。市值型偏重價格成長、高股息型偏重現金流。</div>
+    </div>` : ''}
+
+    ${projectionCard()}
+  `;
+}
+
+/* 未來資產推估 */
+function projectionCard() {
+  const liq = liquidAsset();
+  if (!liq) return '';
+  const r = blendedReturn(), m = D.profile.monthlyInvest || 0;
+  const yrs = [5, 10, 15, 20];
+  const rows = yrs.map(y => {
+    let a = liq; const rm = r/100/12;
+    for (let i = 0; i < y*12; i++) a = a*(1+rm)+m;
+    // 保守/樂觀情境
+    let lo = liq, hi = liq;
+    const rl = Math.max(0, r-3)/100/12, rh = (r+3)/100/12;
+    for (let i = 0; i < y*12; i++) { lo = lo*(1+rl)+m; hi = hi*(1+rh)+m; }
+    return { y, a, lo, hi, age: (D.profile.age||30)+y, inc: a*(annualIncome()/liq||0.04)/12 };
+  });
+  const max = rows[rows.length-1].hi;
+  return `<div class="card">
+    <div class="ct">🔮 未來資產推估</div>
+    <div class="cs">以目前配置加權報酬 ${r.toFixed(1)}%、每月投入 ${fmt(m,1)} 萬試算（±3% 為情境區間）</div>
+    ${rows.map(x=>`
+      <div style="margin-bottom:13px">
+        <div class="mini"><span><b>${x.y} 年後</b> · ${x.age} 歲</span><span><b style="font-size:15px">${fmt0(x.a)}</b> 萬</span></div>
+        <div style="position:relative;height:22px;background:var(--bg);border-radius:5px;overflow:hidden">
+          <div style="position:absolute;left:${x.lo/max*100}%;width:${(x.hi-x.lo)/max*100}%;height:100%;background:rgba(184,133,74,.18)"></div>
+          <div style="position:absolute;left:0;width:${x.a/max*100}%;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-d));border-radius:5px"></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--soft);margin-top:2px">保守 ${fmt0(x.lo)} ~ 樂觀 ${fmt0(x.hi)} 萬 · 屆時月被動收入約 ${fmt(x.inc,1)} 萬</div>
+      </div>`).join('')}
+    <div class="note">📌 此為複利推估，不保證實現。市場短期波動遠大於此曲線，長期紀律才是關鍵。</div>
+  </div>`;
 }
 
 async function doUpdate() {
@@ -149,7 +200,7 @@ async function doUpdate() {
   const b = document.getElementById('btnUpd');
   b.disabled = true;
   const r = await updateAllPrices((i, n, c) => { b.textContent = `更新中… ${i}/${n} (${c})`; });
-  b.disabled = false; b.textContent = '🔄 更新股價（Yahoo）';
+  b.disabled = false; b.textContent = '🔄 更新股價 · 股利 · 歷史報酬';
   toast(r.fail.length ? `更新 ${r.ok} 檔，失敗：${r.fail.join(',')}` : `已更新 ${r.ok} 檔股價 ✓`, r.fail.length > 0);
   render();
 }
@@ -208,7 +259,7 @@ function renderAssets() {
           const t = ASSET_TYPES[a.type] || ASSET_TYPES.other;
           return `<div class="item">
             <span class="dot" style="background:${t.color}"></span>
-            <div><div class="n">${t.icon} ${a.name}</div><div class="m">${t.name}${a.rate ? ` · 年報酬 ${a.rate}%` : ''}${a.note ? ` · ${a.note}` : ''}</div></div>
+            <div><div class="n">${t.icon} ${a.name}</div><div class="m">${t.name}${a.rate ? ` · ${a.rate}%` : ''}${a.maturity ? ` · 到期 ${a.maturity}` : ''}${a.note ? ` · ${a.note}` : ''}</div>${matBadge(a)}</div>
             <div class="r"><div class="v">${fmt(a.amount)} 萬</div></div>
             <button class="x" onclick="assetForm('${a.id}')">✎</button><button class="x" onclick="del('assets','${a.id}')">×</button>
           </div>`;
@@ -217,6 +268,13 @@ function renderAssets() {
     </div>`;
 }
 
+function matBadge(a){
+  if(!a.maturity) return '';
+  const d=Math.ceil((new Date(a.maturity)-new Date())/86400000);
+  if(d<0) return '<div style="font-size:11px;color:var(--red);margin-top:2px">⚠️ 已到期，請更新</div>';
+  if(d<=60) return `<div style="font-size:11px;color:var(--gold-d);margin-top:2px">⏰ ${d} 天後到期</div>`;
+  return '';
+}
 function assetForm(id) {
   const a = id ? D.assets.find(x => x.id === id) : null;
   modal(`${a ? '編輯' : '新增'}資產`, `
@@ -228,7 +286,16 @@ function assetForm(id) {
       <div class="fg"><label class="fl">金額（萬）*</label><input class="fi" id="f_amt" type="number" step="0.1" value="${a?.amount ?? ''}"></div>
       <div class="fg"><label class="fl">預估年報酬 %</label><input class="fi" id="f_rate" type="number" step="0.1" value="${a?.rate ?? ''}"></div>
     </div>
-    <div class="fg"><label class="fl">備註</label><input class="fi" id="f_note" value="${a?.note || ''}" placeholder="如：2027/8 到期"></div>`, () => {
+    <div class="row">
+      <div class="fg"><label class="fl">到期日（選填）</label><input class="fi" type="date" id="f_mat" value="${a?.maturity || ''}"></div>
+      <div class="fg"><label class="fl">配息方式</label><select class="fi" id="f_payout">
+        <option value="" ${!a?.payout?'selected':''}>不配息／複利滾入</option>
+        <option value="annual" ${a?.payout==='annual'?'selected':''}>每年領息</option>
+        <option value="monthly" ${a?.payout==='monthly'?'selected':''}>每月領息</option>
+        <option value="maturity" ${a?.payout==='maturity'?'selected':''}>到期一次領</option>
+      </select></div>
+    </div>
+    <div class="fg"><label class="fl">備註</label><input class="fi" id="f_note" value="${a?.note || ''}" placeholder="如：中國信託一年期"></div>`, () => {
     const name = document.getElementById('f_name').value.trim();
     const amt = parseFloat(document.getElementById('f_amt').value);
     if (!name || isNaN(amt)) { toast('名稱與金額為必填', 1); return false; }
@@ -237,6 +304,8 @@ function assetForm(id) {
     o.name = name; o.amount = amt;
     o.rate = parseFloat(document.getElementById('f_rate').value) || 0;
     o.note = document.getElementById('f_note').value.trim();
+    o.maturity = document.getElementById('f_mat').value;
+    o.payout = document.getElementById('f_payout').value;
     if (!a) D.assets.push(o);
     save(); render(); return true;
   });
@@ -248,81 +317,214 @@ function syncRate() {
   if (t && r && !r.value) r.value = ASSET_TYPES[t].defRate;
 }
 
+
+/* ---------- 股息專區 ---------- */
+function renderDividends() {
+  const el = document.getElementById('p-dividends');
+  const withDiv = D.stocks.filter(s => s.lastDivDate || s.yield);
+  const annual = D.stocks.reduce((a,s)=>a+stockValue(s)*(s.yield||0)/100, 0);
+  // 預估未來 12 個月配息行事曆
+  const cal = [];
+  D.stocks.forEach(s => {
+    if (!s.lastDivDate || !s.freq) return;
+    const gap = 365/s.freq;
+    const per = s.avgAnnualDiv ? s.avgAnnualDiv/s.freq : (s.lastDivAmount||0);
+    let d = new Date(s.lastDivDate*1000);
+    for (let i=0;i<s.freq+1;i++) {
+      d = new Date(d.getTime()+gap*86400000);
+      if (d > new Date() && d < new Date(Date.now()+400*86400000)) {
+        cal.push({ code:s.code, ex:d, pay:new Date(d.getTime()+38*86400000),
+                   amt:per*(s.lots||0)*1000, per, est:true });
+      }
+    }
+  });
+  cal.sort((a,b)=>a.ex-b.ex);
+  const next12 = cal.reduce((a,c)=>a+c.amt,0);
+  const logTotal = (D.dividends||[]).reduce((a,d)=>a+d.amount,0);
+  const thisYear = (D.dividends||[]).filter(d=>d.date.startsWith(String(new Date().getFullYear()))).reduce((a,d)=>a+d.amount,0);
+
+  el.innerHTML = `
+    <div class="dash">
+      <div class="dcard"><div class="dl">🧧 預估年配息</div><div class="dv up">${fmt(annual)}</div><div class="dm">月均 ${fmt(annual/12,2)} 萬</div></div>
+      <div class="dcard"><div class="dl">📅 未來12月預估</div><div class="dv">${fmt0(next12/10000)}</div><div class="dm">萬元 · ${cal.length} 次配息</div></div>
+      <div class="dcard"><div class="dl">💰 今年已領</div><div class="dv">${fmt0(thisYear/10000)}</div><div class="dm">萬元</div></div>
+      <div class="dcard"><div class="dl">📜 累計已領</div><div class="dv">${fmt0(logTotal/10000)}</div><div class="dm">萬元</div></div>
+    </div>
+
+    <div class="card">
+      <div class="ct">📅 配息行事曆</div>
+      <div class="cs">依各檔歷史配息頻率與金額推估 · 發放日約除息後 38 天（台股實務約 30~45 天）</div>
+      ${cal.length ? cal.slice(0,10).map(c=>{
+        const days = Math.ceil((c.ex-new Date())/86400000);
+        return `<div class="item">
+          <span class="dot" style="background:${days<=14?'var(--gold)':'var(--line)'}"></span>
+          <div><div class="n">${c.code} <span style="font-weight:400;font-size:11.5px;color:var(--soft)">每股約 ${fmt(c.per,2)} 元</span></div>
+          <div class="m">除息 ${c.ex.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})} · 入帳 ${c.pay.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})} · ${days} 天後</div></div>
+          <div class="r"><div class="v up">${fmt0(c.amt)}</div><div style="font-size:10px;color:var(--soft)">元</div></div>
+        </div>`;
+      }).join('') : '<div class="empty">尚無資料<br>請先到「股票」按更新，系統會自動抓取配息歷史</div>'}
+      <div style="font-size:11px;color:var(--soft);margin-top:8px">※ 均為依歷史推估，實際金額與日期以各投信公告為準</div>
+    </div>
+
+    <div class="card">
+      <div class="ct">🧧 領息紀錄 <button class="btn b1 bs" onclick="divForm()">+ 記一筆</button></div>
+      <div class="cs">實際入帳後記錄，追蹤真實現金流</div>
+      ${(D.dividends||[]).length ? [...D.dividends].sort((a,b)=>b.date.localeCompare(a.date)).map(d=>`
+        <div class="item"><span class="dot" style="background:var(--green)"></span>
+          <div><div class="n">${d.code}</div><div class="m">${d.date}${d.note?' · '+d.note:''}</div></div>
+          <div class="r"><div class="v up">+${d.amount.toLocaleString()}</div></div>
+          <button class="x" onclick="del('dividends','${d.id}')">×</button>
+        </div>`).join('') : '<div class="empty">還沒有領息紀錄</div>'}
+    </div>
+
+    ${withDiv.length ? `<div class="card">
+      <div class="ct">📊 各檔配息貢獻</div><div class="cs">依目前持股與殖利率估算年配息</div>
+      ${D.stocks.filter(s=>s.yield).sort((a,b)=>stockValue(b)*b.yield-stockValue(a)*a.yield).map(s=>{
+        const d=stockValue(s)*s.yield/100, pctv=annual?d/annual*100:0;
+        const yoc = s.cost? (s.yield*s.price/s.cost) : 0;
+        return `<div style="margin-bottom:11px">
+          <div class="mini"><span><b>${s.code}</b> ${s.yield.toFixed(1)}%${yoc?` <span style="color:var(--green)">(成本殖利率 ${yoc.toFixed(1)}%)</span>`:''}</span><span><b>${fmt(d,1)}</b> 萬/年</span></div>
+          <div class="bar"><div style="width:${pctv}%;background:var(--gold)"></div></div>
+        </div>`;
+      }).join('')}
+      <div class="note" style="margin-top:6px">💡 <b>成本殖利率</b>＝年配息 ÷ 你的持有成本。長期持有的低成本部位，成本殖利率會遠高於市場殖利率——這就是不隨意賣出的價值。</div>
+    </div>` : ''}
+  `;
+}
+function divForm() {
+  modal('記錄領息', `
+    <div class="row">
+      <div class="fg"><label class="fl">標的 *</label>
+        <select class="fi" id="f_code">${D.stocks.map(s=>`<option value="${s.code}">${s.code} ${s.name||''}</option>`).join('')}<option value="其他">其他</option></select></div>
+      <div class="fg"><label class="fl">入帳日期</label><input class="fi" type="date" id="f_date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="fg"><label class="fl">金額（元）*</label><input class="fi" type="number" id="f_amt" placeholder="13000"></div>
+    <div class="fg"><label class="fl">備註</label><input class="fi" id="f_note" placeholder="如：Q2 季配"></div>`, () => {
+    const a = parseFloat(document.getElementById('f_amt').value);
+    if (!a) { toast('請填金額',1); return false; }
+    if (!D.dividends) D.dividends = [];
+    D.dividends.push({ id:uid('d'), date:document.getElementById('f_date').value, code:document.getElementById('f_code').value,
+      amount:Math.round(a), note:document.getElementById('f_note').value.trim() });
+    save(); render(); toast('已記錄'); return true;
+  });
+}
+
 /* ---------- 不動產 ---------- */
 function renderRealty() {
   const el = document.getElementById('p-realty');
   el.innerHTML = `
     <div class="card">
       <div class="ct">🏠 不動產與房貸 <button class="btn b1 bs" onclick="realtyForm()">+ 新增</button></div>
-      <div class="cs">輸入購入價與貸款條件，自動算月付、剩餘本金、總利息</div>
-      ${D.realties.length ? D.realties.map(r => {
-        const rem = remainLoan(r), mv = r.marketValue || r.buyPrice || 0, eq = mv - rem;
-        const now = new Date();
-        const elapsed = (now.getFullYear() + now.getMonth() / 12) - (r.startYear || now.getFullYear());
-        const inGrace = elapsed <= (r.graceYears || 0);
-        const payNow = currentMonthlyPay(r);
-        const payAfter = monthlyPay(r, false);
-        const totalInt = payAfter * ((r.years - (r.graceYears || 0)) * 12) + monthlyPay(r, true) * (r.graceYears || 0) * 12 - r.loanAmount;
-        return `<div style="border:1px solid var(--line);border-radius:12px;padding:15px;margin-bottom:11px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <b style="font-size:15px">${r.name}</b>
-            ${inGrace ? '<span class="tag tg">寬限期中</span>' : ''}
-            <button class="x" style="margin-left:auto" onclick="realtyForm('${r.id}')">✎</button>
-            <button class="x" onclick="del('realties','${r.id}')">×</button>
-          </div>
-          <div class="grid" style="margin:0">
-            <div class="st"><div class="l">目前月付</div><div class="v">${fmt(payNow, 2)} 萬</div></div>
-            <div class="st"><div class="l">剩餘貸款</div><div class="v dn">${fmt(rem)} 萬</div></div>
-            <div class="st"><div class="l">房產淨值</div><div class="v up">${fmt(eq)} 萬</div></div>
-            <div class="st"><div class="l">預估總利息</div><div class="v">${fmt0(totalInt)} 萬</div></div>
-          </div>
-          <div style="font-size:11.5px;color:var(--soft);margin-top:10px;line-height:1.8">
-            購入 ${fmt0(r.buyPrice)} 萬 · 貸款 ${fmt0(r.loanAmount)} 萬 · 利率 ${r.rate}% · ${r.years} 年${r.graceYears ? ` · 寬限 ${r.graceYears} 年` : ''}<br>
-            ${inGrace ? `寬限期結束後月付將升至 <b>${fmt(payAfter, 2)} 萬</b>（+${fmt(payAfter - payNow, 2)} 萬）` : ''}
-          </div>
-        </div>`;
-      }).join('') : '<div class="empty">還沒有不動產<br>點「+ 新增」登記你的房產</div>'}
+      <div class="cs">預售屋可先試算未來房貸；成屋可設定分段利率與寬限期</div>
+      ${D.realties.length ? D.realties.map(r => realtyCard(r)).join('') : '<div class="empty">還沒有不動產<br>點「+ 新增」登記房產或試算房貸</div>'}
     </div>`;
 }
 
+function realtyCard(r) {
+  const sim = simLoan(r);
+  const yNow = loanYearNow(r);
+  const isPresale = r.stage === 'presale';
+  const payNow = currentMonthlyPay(r);
+  const rem = remainLoan(r);
+  const paid = r.paidAmount || 0;
+  const pending = Math.max(0, (r.totalPrice||0) - paid - (r.loanAmount||0));
+  return `<div style="border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <b style="font-size:16px">${r.name}</b>
+      <span class="tag ${isPresale?'tn':'tg'}">${isPresale?'預售屋':'成屋'}</span>
+      ${yNow>0?`<span class="tag tg">第 ${yNow} 年</span>`:''}
+      <button class="x" style="margin-left:auto" onclick="realtyForm('${r.id}')">✎</button>
+      <button class="x" onclick="del('realties','${r.id}')">×</button>
+    </div>
+    <div class="grid" style="margin:0 0 12px">
+      <div class="st"><div class="l">購買總價</div><div class="v">${fmt0(r.totalPrice)} 萬</div></div>
+      <div class="st"><div class="l">已付款</div><div class="v">${fmt0(paid)} 萬</div></div>
+      <div class="st"><div class="l">${yNow>0?'貸款餘額':'預計貸款'}</div><div class="v">${fmt0(yNow>0?rem:(r.loanAmount||0))} 萬</div></div>
+      <div class="st"><div class="l">${yNow>0?'目前月付':'首期月付'}</div><div class="v">${fmt(yNow>0?payNow:(sim.phases[0]?.monthly||0),2)} 萬</div></div>
+    </div>
+    ${pending>0?`<div style="font-size:12px;color:var(--gold-d);background:#fdf6ea;border-radius:8px;padding:9px 11px;margin-bottom:12px">⏳ 交屋前尚需自備 <b>${fmt0(pending)} 萬</b>（總價 − 已付 − 貸款）</div>`:''}
+    ${sim.phases.length?`
+      <div class="sec" style="margin:6px 0 8px">📋 還款期程試算</div>
+      <div style="overflow-x:auto"><table>
+        <tr><th>期間</th><th>利率</th><th>月付(萬)</th><th>該段利息</th><th>期末餘額</th></tr>
+        ${sim.phases.map(p=>`<tr>
+          <td>第 ${p.y1}-${p.y2} 年${p.grace?' <span class="tag tn">寬限</span>':''}</td>
+          <td>${p.rate}%</td><td><b>${fmt(p.monthly,2)}</b></td>
+          <td>${fmt0(p.interest)} 萬</td><td>${fmt0(p.endBal)} 萬</td>
+        </tr>`).join('')}
+      </table></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.9">
+        總利息約 <b>${fmt0(sim.totalInterest)} 萬</b> · 本息合計 <b>${fmt0((r.loanAmount||0)+sim.totalInterest)} 萬</b>
+        ${sim.phases.length>1?`<br>⚠️ 第 ${sim.phases[0].y2+1} 年起月付由 ${fmt(sim.phases[0].monthly,2)} 萬升至 <b>${fmt(sim.phases[1].monthly,2)} 萬</b>（+${fmt(sim.phases[1].monthly-sim.phases[0].monthly,2)} 萬），請預先規劃現金流`:''}
+      </div>`:'<div style="font-size:12.5px;color:var(--soft)">尚未設定貸款條件，點 ✎ 編輯可試算</div>'}
+  </div>`;
+}
+
+let RF_PHASES = [];
 function realtyForm(id) {
-  const r = id ? D.realties.find(x => x.id === id) : null;
+  const r = id ? D.realties.find(x=>x.id===id) : null;
   const y = new Date().getFullYear();
-  modal(`${r ? '編輯' : '新增'}不動產`, `
-    <div class="fg"><label class="fl">名稱 *</label><input class="fi" id="f_name" value="${r?.name || ''}" placeholder="如：台中自住宅"></div>
+  RF_PHASES = r ? JSON.parse(JSON.stringify(getPhases(r))) : [{y1:1,y2:3,rate:2.0,grace:true},{y1:4,y2:30,rate:2.2}];
+  modal(`${r?'編輯':'新增'}不動產`, `
+    <div class="fg"><label class="fl">房產類型</label>
+      <select class="fi" id="f_stage" onchange="rfStage()">
+        <option value="presale" ${r?.stage!=='existing'?'selected':''}>🏗️ 預售屋（尚未交屋/未起貸）</option>
+        <option value="existing" ${r?.stage==='existing'?'selected':''}>🏠 成屋（已交屋，貸款中或即將開始）</option>
+      </select></div>
+    <div class="fg"><label class="fl">名稱 *</label><input class="fi" id="f_name" value="${r?.name||''}" placeholder="如：台中自住宅"></div>
     <div class="row">
-      <div class="fg"><label class="fl">購入價（萬）*</label><input class="fi" id="f_buy" type="number" value="${r?.buyPrice ?? ''}"></div>
-      <div class="fg"><label class="fl">目前市價（萬）</label><input class="fi" id="f_mv" type="number" value="${r?.marketValue ?? ''}" placeholder="留空用購入價"></div>
+      <div class="fg"><label class="fl">購買總價（萬）*</label><input class="fi" type="number" id="f_total" value="${r?.totalPrice??''}"></div>
+      <div class="fg"><label class="fl">已付款（萬）</label><input class="fi" type="number" id="f_paid" value="${r?.paidAmount??''}" placeholder="頭期+工程款"></div>
     </div>
-    <div class="sec">貸款資訊</div>
+    <div class="sec">💰 貸款試算</div>
     <div class="row">
-      <div class="fg"><label class="fl">貸款金額（萬）</label><input class="fi" id="f_loan" type="number" value="${r?.loanAmount ?? ''}"></div>
-      <div class="fg"><label class="fl">年利率 %</label><input class="fi" id="f_rate" type="number" step="0.01" value="${r?.rate ?? 2.1}"></div>
+      <div class="fg"><label class="fl">貸款金額（萬）</label><input class="fi" type="number" id="f_loan" value="${r?.loanAmount??''}"></div>
+      <div class="fg"><label class="fl">總年限</label><input class="fi" type="number" id="f_years" value="${r?.years??30}"></div>
     </div>
-    <div class="row">
-      <div class="fg"><label class="fl">貸款年限</label><input class="fi" id="f_years" type="number" value="${r?.years ?? 30}"></div>
-      <div class="fg"><label class="fl">寬限期（年）</label><input class="fi" id="f_grace" type="number" value="${r?.graceYears ?? 0}"></div>
-    </div>
-    <div class="row">
-      <div class="fg"><label class="fl">開始年份</label><input class="fi" id="f_start" type="number" value="${r?.startYear ?? y}"></div>
-      <div class="fg"><label class="fl">實際月付（萬）</label><input class="fi" id="f_pay" type="number" step="0.01" value="${r?.monthlyPay ?? ''}" placeholder="留空自動算"></div>
-    </div>`, () => {
-    const name = document.getElementById('f_name').value.trim();
-    const buy = parseFloat(document.getElementById('f_buy').value);
-    if (!name || isNaN(buy)) { toast('名稱與購入價為必填', 1); return false; }
+    <div class="fg" id="f_startwrap"><label class="fl">起貸年份</label><input class="fi" type="number" id="f_start" value="${r?.loanStartYear??y}" placeholder="預售屋填預計交屋年"></div>
+    <div class="sec">📊 分段利率<button class="btn b3" style="float:right;padding:2px 8px" onclick="rfAddPhase()">+ 加一段</button></div>
+    <div style="font-size:11.5px;color:var(--soft);margin-bottom:8px">可設定寬限期與不同年期的利率，系統自動計算各段月付</div>
+    <div id="f_phases"></div>`, () => {
+    const name=document.getElementById('f_name').value.trim();
+    const total=parseFloat(document.getElementById('f_total').value);
+    if(!name||isNaN(total)){toast('名稱與總價為必填',1);return false;}
+    rfSync();
     const o = r || { id: uid('r') };
-    o.name = name; o.buyPrice = buy;
-    o.marketValue = parseFloat(document.getElementById('f_mv').value) || 0;
-    o.loanAmount = parseFloat(document.getElementById('f_loan').value) || 0;
-    o.rate = parseFloat(document.getElementById('f_rate').value) || 0;
-    o.years = parseInt(document.getElementById('f_years').value) || 30;
-    o.graceYears = parseInt(document.getElementById('f_grace').value) || 0;
-    o.startYear = parseInt(document.getElementById('f_start').value) || y;
-    o.monthlyPay = parseFloat(document.getElementById('f_pay').value) || 0;
-    if (!r) D.realties.push(o);
+    o.stage=document.getElementById('f_stage').value;
+    o.name=name; o.totalPrice=total;
+    o.paidAmount=parseFloat(document.getElementById('f_paid').value)||0;
+    o.loanAmount=parseFloat(document.getElementById('f_loan').value)||0;
+    o.years=parseInt(document.getElementById('f_years').value)||30;
+    o.loanStartYear=parseInt(document.getElementById('f_start').value)||y;
+    o.phases=RF_PHASES.filter(p=>p.y1&&p.y2);
+    if(!r) D.realties.push(o);
     save(); render(); return true;
   });
+  rfRender();
 }
+function rfStage(){}
+function rfRender() {
+  const box=document.getElementById('f_phases');
+  if(!box) return;
+  box.innerHTML = RF_PHASES.map((p,i)=>`
+    <div class="row" style="align-items:flex-end;background:var(--bg);border-radius:9px;padding:9px;margin-bottom:7px">
+      <div class="fg" style="min-width:52px;margin-bottom:0"><label class="fl">起(年)</label><input class="fi" type="number" value="${p.y1}" onchange="RF_PHASES[${i}].y1=+this.value"></div>
+      <div class="fg" style="min-width:52px;margin-bottom:0"><label class="fl">迄(年)</label><input class="fi" type="number" value="${p.y2}" onchange="RF_PHASES[${i}].y2=+this.value"></div>
+      <div class="fg" style="min-width:62px;margin-bottom:0"><label class="fl">利率%</label><input class="fi" type="number" step="0.01" value="${p.rate}" onchange="RF_PHASES[${i}].rate=+this.value"></div>
+      <div class="fg" style="min-width:70px;margin-bottom:0"><label class="fl">月付(萬)</label><input class="fi" type="number" step="0.01" value="${p.pay||''}" placeholder="自動" onchange="RF_PHASES[${i}].pay=+this.value||0"></div>
+      <div class="fg" style="flex:0 0 auto;margin-bottom:0;text-align:center">
+        <label class="fl">寬限</label><input type="checkbox" ${p.grace?'checked':''} onchange="RF_PHASES[${i}].grace=this.checked" style="width:20px;height:20px">
+      </div>
+      <button class="x" onclick="RF_PHASES.splice(${i},1);rfRender()">×</button>
+    </div>`).join('');
+}
+function rfAddPhase(){
+  const last=RF_PHASES[RF_PHASES.length-1];
+  RF_PHASES.push({y1:(last?.y2||0)+1, y2:(last?.y2||0)+10, rate:last?.rate||2.2});
+  rfRender();
+}
+function rfSync(){}
+
 
 /* ---------- 設定 ---------- */
 function renderSettings() {
@@ -425,7 +627,7 @@ function resetAll() {
 }
 
 function render() {
-  renderOverview(); renderStocks(); renderAssets(); renderRealty(); renderSettings();
+  renderOverview(); renderStocks(); renderDividends(); renderAssets(); renderRealty(); renderSettings();
 }
 document.addEventListener('DOMContentLoaded', () => {
   load();

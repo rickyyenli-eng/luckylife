@@ -2,34 +2,39 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LuckyLife · 個人資產管理</title>
-<meta name="description" content="免費的個人資產管理工具。台股自動報價、自訂資產、房貸試算、退休試算。資料只存在你的瀏覽器。">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LuckyLife · 我的資產</title>
 <link rel="stylesheet" href="css/main.css">
-<style>
-.lp{min-height:88vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 0}
-.lp h1{font-size:42px;font-weight:800;letter-spacing:-1.5px;line-height:1.2;margin-bottom:16px}
-.lp h1 span{background:linear-gradient(120deg,var(--gold),var(--gold-d));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.lp p{font-size:16px;color:var(--muted);max-width:420px;margin-bottom:32px}
-.cta{display:inline-block;padding:16px 44px;border-radius:12px;background:linear-gradient(135deg,var(--gold),var(--gold-d));color:#fff;font-weight:700;font-size:16px;box-shadow:0 6px 20px rgba(150,104,58,.3)}
-.pills{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:28px}
-.pill{padding:7px 15px;border-radius:20px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--muted);font-weight:600}
-@media(max-width:600px){.lp h1{font-size:32px}}
-</style>
 </head>
 <body>
+<nav class="nav"><div class="nav-in">
+  <div class="logo">Lucky<span>Life</span></div>
+</div></nav>
+
 <div class="wrap">
-  <div class="lp">
-    <h1>你的資產<span>一目瞭然</span></h1>
-    <p>台股自動報價 · 資產配置 · 房貸試算 · 退休倒數<br>資料只存在你的瀏覽器，免註冊</p>
-    <a class="cta" href="app.html">開始使用 →</a>
-    <div class="pills">
-      <span class="pill">📊 台股自動抓價</span>
-      <span class="pill">💰 自訂各類資產</span>
-      <span class="pill">🏠 房貸試算</span>
-      <span class="pill">🎯 退休倒數</span>
-      <span class="pill">🔒 資料自主</span>
-    </div>
+  <div class="tabs">
+    <button class="tab on" data-p="overview">總覽</button>
+    <button class="tab" data-p="stocks">股票</button>
+    <button class="tab" data-p="dividends">股息</button>
+    <button class="tab" data-p="assets">其他資產</button>
+    <button class="tab" data-p="realty">不動產</button>
+    <button class="tab" data-p="settings">設定</button>
   </div>
+
+  <div class="page on" id="p-overview"></div>
+  <div class="page" id="p-stocks"></div>
+  <div class="page" id="p-dividends"></div>
+  <div class="page" id="p-assets"></div>
+  <div class="page" id="p-realty"></div>
+  <div class="page" id="p-settings"></div>
 </div>
+
+<div class="ob" id="obLayer"></div>
+<div class="modal" id="modal"></div>
+<div class="toast" id="toast"></div>
+
+<script src="js/store.js"></script>
+<script src="js/quote.js"></script>
+<script src="js/onboard.js"></script>
+<script src="js/app.js"></script>
 </body></html>
