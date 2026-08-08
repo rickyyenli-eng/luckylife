@@ -1,5 +1,25 @@
 /* AssetFlow · 資料層 */
 const SK = 'assetflow_v1';
+const MK = 'assetflow_mode';   // 'local' | 'session'
+function getMode() {
+  try { return localStorage.getItem(MK) || sessionStorage.getItem(MK) || 'local'; } catch (e) { return 'local'; }
+}
+function setMode(m) {
+  try {
+    if (m === 'session') {
+      sessionStorage.setItem(MK, 'session');
+      const raw = localStorage.getItem(SK);
+      if (raw) sessionStorage.setItem(SK, raw);
+      localStorage.removeItem(SK); localStorage.removeItem(MK);
+    } else {
+      localStorage.setItem(MK, 'local');
+      const raw = sessionStorage.getItem(SK);
+      if (raw) localStorage.setItem(SK, raw);
+      sessionStorage.removeItem(SK); sessionStorage.removeItem(MK);
+    }
+  } catch (e) {}
+}
+function store() { return getMode() === 'session' ? sessionStorage : localStorage; }
 
 const ASSET_TYPES = {
   deposit:  { name: '定存 / 現金', icon: '💵', color: '#5b8a72', defRate: 1.5 },
@@ -26,14 +46,14 @@ let D = null;
 
 function load() {
   try {
-    const raw = localStorage.getItem(SK);
+    const raw = store().getItem(SK) || localStorage.getItem(SK) || sessionStorage.getItem(SK);
     D = raw ? { ...structuredClone(DEF), ...JSON.parse(raw) } : structuredClone(DEF);
   } catch (e) { D = structuredClone(DEF); }
   return D;
 }
 function save() {
   D.updated = new Date().toISOString();
-  try { localStorage.setItem(SK, JSON.stringify(D)); } catch (e) { toast('儲存失敗：空間不足', 1); }
+  try { store().setItem(SK, JSON.stringify(D)); } catch (e) { toast('儲存失敗：空間不足', 1); }
 }
 const uid = p => p + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 

@@ -73,18 +73,28 @@ function renderOb() {
 
     case 5: body = `
       <div class="ob-icon">🏠</div>
-      <h2>有房子或房貸嗎？</h2>
+      <h2>有房子或預售屋嗎？</h2>
       <p class="ob-sub">沒有的話直接按「下一步」跳過</p>
+      <div class="fg"><label class="fl">房產類型</label><select class="fi" id="o_rs">
+        <option value="">沒有房產</option>
+        <option value="presale" ${d.realty?.stage==='presale'?'selected':''}>🏗️ 預售屋（未交屋、未起貸）</option>
+        <option value="existing" ${d.realty?.stage==='existing'?'selected':''}>🏠 成屋（已交屋）</option>
+      </select></div>
       <div class="fg"><label class="fl">名稱</label><input class="fi" id="o_rn" value="${d.realty?.name||''}" placeholder="如：自住宅"></div>
       <div class="row">
-        <div class="fg"><label class="fl">購入價（萬）</label><input class="fi" type="number" id="o_rb" value="${d.realty?.buyPrice||''}"></div>
-        <div class="fg"><label class="fl">貸款金額（萬）</label><input class="fi" type="number" id="o_rl" value="${d.realty?.loanAmount||''}"></div>
+        <div class="fg"><label class="fl">購買總價（萬）</label><input class="fi" type="number" id="o_rb" value="${d.realty?.totalPrice||''}"></div>
+        <div class="fg"><label class="fl">已付款（萬）</label><input class="fi" type="number" id="o_rp" value="${d.realty?.paidAmount||''}" placeholder="頭期+工程款"></div>
       </div>
       <div class="row">
-        <div class="fg"><label class="fl">年利率 %</label><input class="fi" type="number" step="0.01" id="o_rr" value="${d.realty?.rate??2.1}"></div>
+        <div class="fg"><label class="fl">貸款金額（萬）</label><input class="fi" type="number" id="o_rl" value="${d.realty?.loanAmount||''}"></div>
         <div class="fg"><label class="fl">年限</label><input class="fi" type="number" id="o_ry" value="${d.realty?.years??30}"></div>
+      </div>
+      <div class="row">
+        <div class="fg"><label class="fl">起貸年份</label><input class="fi" type="number" id="o_rsy" value="${d.realty?.loanStartYear??new Date().getFullYear()}"></div>
+        <div class="fg"><label class="fl">利率 %</label><input class="fi" type="number" step="0.01" id="o_rr" value="${d.realty?.rate??2.1}"></div>
         <div class="fg"><label class="fl">寬限期(年)</label><input class="fi" type="number" id="o_rg" value="${d.realty?.graceYears??0}"></div>
-      </div>`; break;
+      </div>
+      <div class="ob-hint">💡 之後可在「不動產」頁設定分段利率（如前3年寬限、4-20年、21-30年不同利率）</div>`; break;
 
     case 6: body = `
       <div class="ob-icon">📅</div>
@@ -160,10 +170,13 @@ function obSave() {
     case 1: d.age=parseInt(g('o_age').value)||30; d.gender=g('o_gender').value; break;
     case 2: d.income=parseFloat(g('o_income').value)||0; d.expense=parseFloat(g('o_expense').value)||0; break;
     case 5:
-      if (g('o_rn').value.trim() && parseFloat(g('o_rb').value)) {
-        d.realty = { name:g('o_rn').value.trim(), buyPrice:parseFloat(g('o_rb').value),
-          loanAmount:parseFloat(g('o_rl').value)||0, rate:parseFloat(g('o_rr').value)||0,
-          years:parseInt(g('o_ry').value)||30, graceYears:parseInt(g('o_rg').value)||0 };
+      const stage = g('o_rs').value;
+      if (stage && g('o_rn').value.trim() && parseFloat(g('o_rb').value)) {
+        const rate = parseFloat(g('o_rr').value)||2.1, yrs = parseInt(g('o_ry').value)||30, gr = parseInt(g('o_rg').value)||0;
+        d.realty = { stage, name:g('o_rn').value.trim(), totalPrice:parseFloat(g('o_rb').value),
+          paidAmount:parseFloat(g('o_rp').value)||0, loanAmount:parseFloat(g('o_rl').value)||0,
+          years:yrs, loanStartYear:parseInt(g('o_rsy').value)||new Date().getFullYear(),
+          phases: gr>0 ? [{y1:1,y2:gr,rate,grace:true},{y1:gr+1,y2:yrs,rate}] : [{y1:1,y2:yrs,rate}] };
       } else d.realty = null;
       break;
     case 7: d.targetAsset=parseFloat(g('o_ta').value)||2000; d.targetIncome=parseFloat(g('o_ti').value)||5; d.monthlyInvest=parseFloat(g('o_mi').value)||0; break;
@@ -178,7 +191,7 @@ async function finishOb() {
     targetIncome:d.targetIncome||5, plans:d.plans||[], onboarded:true };
   d.stocks.forEach(s=>D.stocks.push({id:uid('s'),code:s.code,name:'',lots:s.lots,cost:s.cost,price:0,yield:0}));
   d.assets.forEach(a=>D.assets.push({id:uid('a'),type:a.type,name:ASSET_TYPES[a.type].name,amount:a.amount,rate:a.rate,note:''}));
-  if (d.realty) D.realties.push({id:uid('r'),...d.realty,startYear:new Date().getFullYear(),marketValue:0,monthlyPay:0});
+  if (d.realty) D.realties.push({id:uid('r'),...d.realty});
   save();
   document.getElementById('obLayer').classList.remove('on');
   render();

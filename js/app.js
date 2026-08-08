@@ -19,13 +19,18 @@ function renderOverview() {
   const cost=D.stocks.reduce((a,s)=>a+stockCost(s),0), pnl=st-cost;
   const surplus=(p.monthlyIncome||0)-(p.monthlyExpense||0);
   const empty=!D.stocks.length&&!D.assets.length&&!D.realties.length;
-  if (empty) { el.innerHTML=`<div class="card" style="text-align:center;padding:40px 22px">
-    <div style="font-size:44px;margin-bottom:10px">📊</div>
-    <div style="font-size:19px;font-weight:700;margin-bottom:6px">還沒有任何資料</div>
-    <div style="font-size:13.5px;color:var(--muted);margin-bottom:22px">花 2 分鐘完成設定，立刻看到你的退休倒數</div>
-    <button class="btn b1 full" onclick="startOnboard()">開始引導設定 →</button></div>`; return; }
 
   el.innerHTML = `
+    ${empty ? `<div class="card" style="background:linear-gradient(135deg,#fdf8f0,#f7ecd9);border:none">
+      <div style="font-size:34px;text-align:center;margin-bottom:6px">👋</div>
+      <div style="font-size:18px;font-weight:700;text-align:center;margin-bottom:4px">開始管理你的資產</div>
+      <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:18px">兩種方式，都只要 2 分鐘</div>
+      <div class="row">
+        <button class="btn b1" style="flex:1" onclick="startOnboard()">🧭 引導設定</button>
+        <button class="btn b2" style="flex:1" onclick="document.getElementById('impFileTop').click()">📥 匯入 JSON</button>
+      </div>
+      <input type="file" id="impFileTop" accept=".json" style="display:none" onchange="impJson(this)">
+    </div>` : ''}
     <div class="hero">
       <div class="hl">總淨資產</div>
       <div class="hv">${fmt(nw)}<span class="hu">萬</span></div>
@@ -61,12 +66,58 @@ function renderOverview() {
       <div class="donut">${donut()}<div class="legend">${legend()}</div></div>
     </div>
 
+    <div class="card">
+      <div class="ct">💾 資料保存方式</div>
+      <div class="cs">目前模式：<b id="modeLabel">${getMode()==='session'?'本次瀏覽（關閉即清除）':'一直保留在本瀏覽器'}</b></div>
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn ${getMode()==='local'?'b1':'b2'}" style="flex:1" onclick="switchMode('local')">🔒 一直保留</button>
+        <button class="btn ${getMode()==='session'?'b1':'b2'}" style="flex:1" onclick="switchMode('session')">🕶️ 僅本次</button>
+      </div>
+      <div class="row">
+        <button class="btn b2" style="flex:1" onclick="expJson()">⬇ 匯出 JSON</button>
+        <button class="btn b2" style="flex:1" onclick="document.getElementById('impFileOv').click()">⬆ 匯入 JSON</button>
+      </div>
+      <input type="file" id="impFileOv" accept=".json" style="display:none" onchange="impJson(this)">
+      <div class="note" style="margin-top:12px">
+        <b>🔐 關於你的資料</b><br>
+        所有資料只存在你自己的裝置，不會上傳任何伺服器。<br><br>
+        <b>「一直保留」</b>：資料存在瀏覽器，下次打開自動載入。方便，但若是公用電腦請留意。<br>
+        <b>「僅本次」</b>：關閉分頁即清除。<b>有資安疑慮者建議開無痕視窗使用</b>，離開前記得「⬇ 匯出 JSON」自己收好，下次再匯入即可繼續。
+      </div>
+    </div>
+
     ${p.plans&&p.plans.length&&!p.plans.includes('none')?`<div class="card">
       <div class="ct">📅 你的未來計畫</div><div class="cs">記得為這些目標預留資金</div>
       <div class="ob-chips">${p.plans.map(k=>`<span class="chip on" style="cursor:default">${PLAN_LABELS[k]||k}</span>`).join('')}</div>
     </div>`:''}
+
+    ${tarotCard()}
+    ${footer()}
   `;
 }
+function tarotCard() {
+  return `<a href="https://rickyyenli-eng.github.io/moonlight-tarot/index.html" target="_blank" rel="noopener"
+    style="display:block;text-decoration:none;background:linear-gradient(140deg,#2d2440,#4a3564);border-radius:var(--r);
+    padding:20px;margin-bottom:14px;box-shadow:var(--sh);position:relative;overflow:hidden">
+    <div style="position:absolute;right:-6px;top:-10px;font-size:74px;opacity:.13">🌙</div>
+    <div style="font-size:11.5px;color:#b8a5d8;font-weight:600;letter-spacing:.5px">看盤看累了嗎？</div>
+    <div style="font-size:18px;color:#f0e8ff;font-weight:700;margin:4px 0 6px">Moonlight Tarot · 抽一張每日運勢</div>
+    <div style="font-size:12.5px;color:#c8bade;line-height:1.7;position:relative">數字看久了會焦慮，讓自己休息三分鐘。<br>78 張韋特塔羅，靜下心來問問內心的聲音 →</div>
+  </a>`;
+}
+
+function footer() {
+  const y = new Date().getFullYear();
+  return `<div style="text-align:center;padding:26px 10px 40px;font-size:11.5px;color:var(--soft);line-height:2.1;border-top:1px solid var(--line);margin-top:8px">
+    <div style="font-weight:700;color:var(--muted);font-size:13px;margin-bottom:4px">LuckyLife 個人資產管理</div>
+    © ${y} LuckyLife · Released under the MIT License<br>
+    股價與配息資料來源：Yahoo Finance（延遲報價，僅供參考）<br>
+    本工具所有試算僅供個人財務規劃參考，<b>不構成投資建議</b>；投資有風險，請自行評估並以券商對帳單為準。<br>
+    <span style="opacity:.8">資料儲存於使用者本機瀏覽器，本站不蒐集、不上傳任何個人資料。</span><br>
+    <a href="https://rickyyenli-eng.github.io/moonlight-tarot/index.html" target="_blank" rel="noopener" style="color:var(--gold-d)">🌙 Moonlight Tarot</a>
+  </div>`;
+}
+
 const PLAN_LABELS={buy:'🏠 買房',car:'🚗 買車',marry:'💍 結婚',baby:'👶 生小孩',study:'🎓 進修',travel:'✈️ 旅遊基金',parent:'👵 奉養父母'};
 
 function allocRows(){
@@ -89,24 +140,6 @@ function legend(){
   const rows=allocRows(), tot=rows.reduce((a,r)=>a+r[1],0);
   if(!tot) return '<div class="empty">尚無資料</div>';
   return rows.map(([n,v,c])=>`<div class="lg"><span class="sw" style="background:${c}"></span>${n}<span class="lv">${(v/tot*100).toFixed(1)}%</span></div>`).join('');
-}
-
-function allocBars() {
-  const rows = [];
-  const st = totalStock(), re = totalRealtyEquity();
-  if (st) rows.push(['📊 股票', st, '#1a5276']);
-  D.assets.forEach(a => {
-    const t = ASSET_TYPES[a.type] || ASSET_TYPES.other;
-    rows.push([`${t.icon} ${a.name}`, a.amount || 0, t.color]);
-  });
-  if (re) rows.push(['🏠 不動產淨值', re, '#c0673f']);
-  const tot = rows.reduce((a, r) => a + r[1], 0);
-  if (!tot) return '<div class="empty">尚無資料</div>';
-  return rows.sort((a, b) => b[1] - a[1]).map(([n, v, c]) => `
-    <div style="margin-bottom:11px">
-      <div class="mini"><span>${n}</span><span><b>${fmt(v)}</b> 萬 · ${(v / tot * 100).toFixed(1)}%</span></div>
-      <div class="bar"><div style="width:${v / tot * 100}%;background:${c}"></div></div>
-    </div>`).join('');
 }
 
 /* ---------- 股票 ---------- */
@@ -143,30 +176,48 @@ function renderStocks() {
       ` : '<div class="empty">還沒有持股<br>點「+ 新增」加入第一檔</div>'}
     </div>
 
-    ${D.stocks.some(s=>s.cagr!=null) ? `<div class="card">
-      <div class="ct">📈 長期成長分析</div>
-      <div class="cs">依 Yahoo Finance 近 10 年月線計算 · 含息總報酬 = 價格年化成長 + 現金殖利率</div>
-      <div style="overflow-x:auto"><table>
-        <tr><th>標的</th><th>期間</th><th>價格年化</th><th>殖利率</th><th>含息總報酬</th><th>10年區間</th></tr>
-        ${D.stocks.filter(s=>s.cagr!=null).map(s=>`<tr>
-          <td><b>${s.code}</b></td><td>${s.histYears?s.histYears.toFixed(1)+'年':'—'}</td>
-          <td class="${s.cagr>=0?'up':'dn'}">${s.cagr>=0?'+':''}${s.cagr.toFixed(1)}%</td>
-          <td>${s.yield?s.yield.toFixed(1)+'%':'—'}</td>
-          <td><b class="${(s.totalReturn||0)>=0?'up':'dn'}">${(s.totalReturn||0).toFixed(1)}%</b></td>
-          <td style="font-size:11px;color:var(--soft)">${s.low10?fmt(s.low10,1)+'~'+fmt(s.high10,1):'—'}</td>
-        </tr>`).join('')}
-      </table></div>
-      <div class="note" style="margin-top:12px">💡 歷史報酬不代表未來績效，僅供評估標的長期特性參考。市值型偏重價格成長、高股息型偏重現金流。</div>
-    </div>` : ''}
+    ${growthCard()}
 
     ${projectionCard()}
   `;
 }
 
+
+/* 長期成長分析卡 */
+function growthCard() {
+  const has = D.stocks.filter(s => s.cagr != null);
+  if (!D.stocks.length) return `<div class="card">
+    <div class="ct">📈 長期成長分析</div>
+    <div class="cs">看每檔標的近 10 年的價格年化成長與含息總報酬</div>
+    <div class="empty">加入持股後，按「更新股價」即可自動分析</div></div>`;
+  if (!has.length) return `<div class="card" style="background:linear-gradient(135deg,#fef6e9,#fcebcb);border:none">
+    <div class="ct">📈 長期成長分析 · 尚未分析</div>
+    <div style="font-size:13px;color:#6b4d2e;line-height:1.85">按上方「🔄 更新股價 · 股利 · 歷史報酬」，系統會自動抓取每檔近 10 年的價格年化成長、殖利率、含息總報酬與完整配息歷史，並解鎖「配息行事曆」與「未來資產推估」。</div></div>`;
+  const rows = has.map(s => `<tr>
+      <td><b>${s.code}</b><div style="font-size:10.5px;color:var(--soft)">${(s.name||'').slice(0,8)}</div></td>
+      <td>${s.histYears ? s.histYears.toFixed(1)+'年' : '—'}</td>
+      <td class="${s.cagr>=0?'up':'dn'}">${s.cagr>=0?'+':''}${s.cagr.toFixed(1)}%</td>
+      <td>${s.yield ? s.yield.toFixed(1)+'%' : '—'}</td>
+      <td><b class="${(s.totalReturn||0)>=0?'up':'dn'}">${(s.totalReturn||0).toFixed(1)}%</b></td>
+      <td style="font-size:11px;color:var(--soft)">${s.low10 ? fmt(s.low10,1)+'~'+fmt(s.high10,1) : '—'}</td>
+    </tr>`).join('');
+  return `<div class="card">
+    <div class="ct">📈 長期成長分析</div>
+    <div class="cs">依 Yahoo Finance 月線計算 · 含息總報酬 ＝ 價格年化成長 ＋ 現金殖利率</div>
+    <div style="overflow-x:auto"><table>
+      <tr><th>標的</th><th>期間</th><th>價格年化</th><th>殖利率</th><th>含息總報酬</th><th>價格區間</th></tr>
+      ${rows}
+    </table></div>
+    <div class="note" style="margin-top:12px">💡 歷史報酬不代表未來績效。<b>市值型</b>報酬多來自價格成長、<b>高股息型</b>多來自現金配息，兩者相加才是真實總報酬——只看股價漲跌會低估高息 ETF。</div>
+  </div>`;
+}
+
 /* 未來資產推估 */
 function projectionCard() {
   const liq = liquidAsset();
-  if (!liq) return '';
+  if (!liq) return `<div class="card"><div class="ct">🔮 未來資產推估</div>
+    <div class="empty">加入資產後即可看到 5/10/15/20 年後的資產推估與情境區間</div></div>`;
+  const hasHist = D.stocks.some(s=>s.totalReturn!=null);
   const r = blendedReturn(), m = D.profile.monthlyInvest || 0;
   const yrs = [5, 10, 15, 20];
   const rows = yrs.map(y => {
@@ -181,7 +232,7 @@ function projectionCard() {
   const max = rows[rows.length-1].hi;
   return `<div class="card">
     <div class="ct">🔮 未來資產推估</div>
-    <div class="cs">以目前配置加權報酬 ${r.toFixed(1)}%、每月投入 ${fmt(m,1)} 萬試算（±3% 為情境區間）</div>
+    <div class="cs">以目前配置加權報酬 ${r.toFixed(1)}%${hasHist?'（依各檔實際10年歷史計算）':'（未更新歷史，股票暫用7%估）'}、每月投入 ${fmt(m,1)} 萬試算（±3% 為情境區間）</div>
     ${rows.map(x=>`
       <div style="margin-bottom:13px">
         <div class="mini"><span><b>${x.y} 年後</b> · ${x.age} 歲</span><span><b style="font-size:15px">${fmt0(x.a)}</b> 萬</span></div>
@@ -377,8 +428,9 @@ function renderDividends() {
         </div>`).join('') : '<div class="empty">還沒有領息紀錄</div>'}
     </div>
 
-    ${withDiv.length ? `<div class="card">
+    <div class="card">
       <div class="ct">📊 各檔配息貢獻</div><div class="cs">依目前持股與殖利率估算年配息</div>
+      ${!D.stocks.length ? '<div class="empty">尚未加入持股</div>' : !D.stocks.some(s=>s.yield) ? '<div class="empty">尚無殖利率資料<br>到「股票」按更新即可自動取得</div>' : ''}
       ${D.stocks.filter(s=>s.yield).sort((a,b)=>stockValue(b)*b.yield-stockValue(a)*a.yield).map(s=>{
         const d=stockValue(s)*s.yield/100, pctv=annual?d/annual*100:0;
         const yoc = s.cost? (s.yield*s.price/s.cost) : 0;
@@ -388,7 +440,7 @@ function renderDividends() {
         </div>`;
       }).join('')}
       <div class="note" style="margin-top:6px">💡 <b>成本殖利率</b>＝年配息 ÷ 你的持有成本。長期持有的低成本部位，成本殖利率會遠高於市場殖利率——這就是不隨意賣出的價值。</div>
-    </div>` : ''}
+    </div>
   `;
 }
 function divForm() {
@@ -557,7 +609,11 @@ function renderSettings() {
     </div>
     <div class="card">
       <div class="ct">📦 資料備份</div>
-      <div class="cs">資料只存在你的瀏覽器。換裝置或清快取前，請先匯出</div>
+      <div class="cs">目前模式：<b>${getMode()==='session'?'僅本次瀏覽':'一直保留'}</b> · 換裝置或清快取前請先匯出</div>
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn ${getMode()==='local'?'b1':'b2'}" style="flex:1" onclick="switchMode('local')">🔒 一直保留</button>
+        <button class="btn ${getMode()==='session'?'b1':'b2'}" style="flex:1" onclick="switchMode('session')">🕶️ 僅本次</button>
+      </div>
       <div class="row">
         <button class="btn b1" style="flex:1" onclick="expJson()">⬇ 匯出 JSON</button>
         <button class="btn b2" style="flex:1" onclick="document.getElementById('impFile').click()">⬆ 匯入 JSON</button>
@@ -599,6 +655,11 @@ function modal(title, body, onOk) {
 }
 function closeModal() { document.getElementById('modal').classList.remove('on'); }
 
+function switchMode(m) {
+  if (m === 'session' && !confirm('切換為「僅本次瀏覽」：\n\n資料將改存在分頁記憶體，關閉分頁後即清除。\n建議離開前先匯出 JSON 備份。\n\n確定切換？')) return;
+  setMode(m); save(); render();
+  toast(m === 'session' ? '已切換：關閉分頁後資料即清除' : '已切換：資料會保留在本瀏覽器');
+}
 function expJson() {
   const blob = new Blob([JSON.stringify({ app: 'assetflow', at: new Date().toISOString(), data: D }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
