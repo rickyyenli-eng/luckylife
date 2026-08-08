@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AssetFlow · 個人資產管理與退休試算</title>
+<meta name="description" content="免費的個人資產管理工具。台股自動報價、自訂資產類別、房貸試算、退休進度追蹤。資料只存在你的瀏覽器，無需註冊。">
+<link rel="stylesheet" href="css/main.css">
+<style>
+.hero-lp{text-align:center;padding:56px 0 42px}
+.hero-lp h1{font-size:38px;font-weight:800;letter-spacing:-1px;line-height:1.25;margin-bottom:14px}
+.hero-lp h1 span{background:linear-gradient(120deg,var(--gold),var(--gold-d));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-lp p{font-size:16px;color:var(--muted);max-width:520px;margin:0 auto 26px}
+.cta{display:inline-block;padding:15px 38px;border-radius:12px;background:linear-gradient(135deg,var(--gold),var(--gold-d));color:#fff;font-weight:700;font-size:16px;box-shadow:0 6px 18px rgba(150,104,58,.28)}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:36px 0}
+.fc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px;box-shadow:var(--sh)}
+.fc .i{font-size:28px;margin-bottom:8px}
+.fc h3{font-size:16px;margin-bottom:6px}
+.fc p{font-size:13.5px;color:var(--muted);line-height:1.75}
+.steps{counter-reset:s}
+.step{display:flex;gap:14px;margin-bottom:18px;align-items:flex-start}
+.step .num{flex:0 0 30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.step h4{font-size:15px;margin-bottom:3px}
+.step p{font-size:13.5px;color:var(--muted)}
+.foot{border-top:1px solid var(--line);padding:26px 0;text-align:center;font-size:12.5px;color:var(--soft);line-height:2}
+@media(max-width:600px){.hero-lp h1{font-size:29px}.hero-lp{padding:38px 0 30px}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-in">
+  <div class="logo">Asset<span>Flow</span></div>
+  <a class="nl" href="#features">功能</a>
+  <a class="nl on" href="app.html">開始使用</a>
+</div></nav>
+
+<div class="wrap">
+  <div class="hero-lp">
+    <h1>你的資產<span>一目瞭然</span><br>退休還有多遠？</h1>
+    <p>免費的個人資產管理工具。台股自動報價、自訂各類資產、房貸試算、退休進度追蹤——資料只存在你的瀏覽器，不需註冊、不上傳雲端。</p>
+    <a class="cta" href="app.html">免費開始使用 →</a>
+    <div style="font-size:12px;color:var(--soft);margin-top:14px">無需帳號 · 完全免費 · 資料自主</div>
+  </div>
+
+  <div class="feat" id="features">
+    <div class="fc"><div class="i">📊</div><h3>台股自動報價</h3><p>輸入代號即可，上市上櫃、個股 ETF 都支援。一鍵更新所有持股市價，自動計算成本、市值與報酬率。</p></div>
+    <div class="fc"><div class="i">💰</div><h3>自訂任何資產</h3><p>定存、儲蓄險、黃金、債券、基金、加密貨幣…想加什麼就加什麼，每項可自訂預估年報酬率。</p></div>
+    <div class="fc"><div class="i">🏠</div><h3>不動產與房貸</h3><p>輸入購入價與貸款條件，自動算出月付金、寬限期後的月付跳升、剩餘本金與總利息。</p></div>
+    <div class="fc"><div class="i">🎯</div><h3>退休進度追蹤</h3><p>設定目標資產與月被動收入，依你的實際配置與月投入，推算還要幾年達標、屆時幾歲。</p></div>
+    <div class="fc"><div class="i">🔒</div><h3>資料完全自主</h3><p>所有資料只存在你自己的瀏覽器 localStorage，不上傳任何伺服器。可隨時匯出 JSON 備份。</p></div>
+    <div class="fc"><div class="i">📱</div><h3>手機也好用</h3><p>響應式設計，手機加到主畫面就像 App。免安裝、免更新。</p></div>
+  </div>
+
+  <div class="card">
+    <div class="ct" style="font-size:17px">🚀 三步驟開始</div>
+    <div class="cs">大約 3 分鐘完成設定</div>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div><h4>加入你的持股</h4><p>輸入股票代號、張數、平均成本，系統自動抓取現價與名稱。</p></div></div>
+      <div class="step"><div class="num">2</div><div><h4>新增其他資產與房產</h4><p>定存、儲蓄險、黃金…以及不動產與貸款條件。</p></div></div>
+      <div class="step"><div class="num">3</div><div><h4>設定退休目標</h4><p>填入目標資產與每月可投入金額，立刻看到你的退休倒數。</p></div></div>
+    </div>
+    <a class="btn b1 full" href="app.html" style="display:block;text-align:center;text-decoration:none;margin-top:6px">開始使用 →</a>
+  </div>
+
+  <div class="note" style="margin-bottom:20px">
+    <strong>⚠️ 免責聲明</strong><br>
+    本工具所有計算僅供個人財務規劃參考，不構成任何投資建議。股價資料來自公開來源，可能有延遲或誤差，實際數字請以券商對帳單為準。投資有風險，請自行評估。
+  </div>
+</div>
+
+<div class="foot">AssetFlow · 開源的個人資產管理工具<br>資料儲存於本機瀏覽器，不會上傳任何伺服器</div>
+</body></html>

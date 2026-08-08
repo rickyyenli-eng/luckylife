@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AssetFlow · 我的資產</title>
+<link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-in">
+  <div class="logo" onclick="location.href='index.html'">Asset<span>Flow</span></div>
+  <a class="nl" href="index.html">關於</a>
+</div></nav>
+
+<div class="wrap">
+  <div class="tabs">
+    <button class="tab on" data-p="overview">總覽</button>
+    <button class="tab" data-p="stocks">股票</button>
+    <button class="tab" data-p="assets">其他資產</button>
+    <button class="tab" data-p="realty">不動產</button>
+    <button class="tab" data-p="settings">設定</button>
+  </div>
+
+  <div class="page on" id="p-overview"></div>
+  <div class="page" id="p-stocks"></div>
+  <div class="page" id="p-assets"></div>
+  <div class="page" id="p-realty"></div>
+  <div class="page" id="p-settings"></div>
+</div>
+
+<div class="modal" id="modal"></div>
+<div class="toast" id="toast"></div>
+
+<script src="js/store.js"></script>
+<script src="js/quote.js"></script>
+<script src="js/app.js"></script>
+</body></html>
