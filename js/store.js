@@ -145,7 +145,9 @@ function currentMonthlyPay(r) {
 }
 // 年被動收入（萬）
 function annualIncome() {
-  const div = D.stocks.reduce((a, s) => a + stockValue(s) * (s.yield || 0) / 100, 0);
+  const div = D.stocks.reduce((a, s) => a + (typeof annualDivEst === 'function'
+    ? annualDivEst(s) * (s.lots || 0) * 1000 / 10000
+    : stockValue(s) * (s.yield || 0) / 100), 0);
   const oth = D.assets.reduce((a, x) => a + (x.amount || 0) * (x.rate || 0) / 100, 0);
   return div + oth;
 }
@@ -154,7 +156,7 @@ function blendedReturn() {
   const tot = liquidAsset();
   if (!tot) return 5;
   let w = 0;
-  D.stocks.forEach(s => { w += stockValue(s) * (s.totalReturn != null ? Math.min(15, s.totalReturn) : 7); });
+  D.stocks.forEach(s => { w += stockValue(s) * (typeof expReturn==='function' ? expReturn(s) : 7); });
   D.assets.forEach(x => { w += (x.amount || 0) * (x.rate || 0); });
   return w / tot;
 }

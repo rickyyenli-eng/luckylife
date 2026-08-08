@@ -45,7 +45,8 @@ async function fetchFull(code) {
     if (dl.length) {
       out.divs = dl;
       const now = Date.now() / 1000;
-      const last12 = dl.filter(d => now - d.date < 400 * 86400).reduce((a, d) => a + d.amount, 0);
+      const last12 = dl.filter(d => now - d.date < 365 * 86400).reduce((a, d) => a + d.amount, 0);
+      out.annual12 = last12;                    // 近12個月實際配息合計（元/股）
       out.yield12 = last12 / out.price * 100;
       out.lastDiv = dl[dl.length - 1];
       // 配息頻率（近3年平均每年次數）
@@ -87,7 +88,7 @@ async function updateAllPrices(onProgress) {
       if (!s.name && q.name) s.name = q.name;
       s.market = q.market;
       if (q.cagr != null) { s.cagr = q.cagr; s.histYears = q.years; s.low10 = q.low; s.high10 = q.high; }
-      if (q.yield12 != null) { s.yield = +q.yield12.toFixed(2); s.freq = q.freq; s.avgAnnualDiv = q.avgAnnualDiv; }
+      if (q.yield12 != null) { s.yield = +q.yield12.toFixed(2); s.freq = q.freq; s.annual12 = q.annual12; s.avgAnnualDiv = q.avgAnnualDiv; }
       if (q.totalReturn != null) s.totalReturn = q.totalReturn;
       if (q.lastDiv) { s.lastDivDate = q.lastDiv.date; s.lastDivAmount = q.lastDiv.amount; }
       if (q.divs) s.divHistory = q.divs.slice(-24);

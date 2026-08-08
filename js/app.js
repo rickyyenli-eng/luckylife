@@ -168,7 +168,7 @@ function renderStocks() {
               <td>${fmt(s.lots,3).replace(/\.?0+$/,'')}</td><td>${fmt(s.cost,2)}</td><td>${fmt(s.price,2)}</td>
               <td><b>${fmt(v)}</b></td>
               <td class="${p>=0?'up':'dn'}">${p>=0?'+':''}${p.toFixed(1)}%</td>
-              <td>${s.yield?s.yield.toFixed(1)+'%':'—'}</td>
+              <td>${yieldEst(s)?yieldEst(s).toFixed(1)+'%':'—'}</td>
               <td style="white-space:nowrap"><button class="x" onclick="stockForm('${s.id}')">✎</button><button class="x" onclick="del('stocks','${s.id}')">×</button></td>
             </tr>`;
           }).join('')}
@@ -197,7 +197,7 @@ function growthCard() {
       <td><b>${s.code}</b><div style="font-size:10.5px;color:var(--soft)">${(s.name||'').slice(0,8)}</div></td>
       <td>${s.histYears ? s.histYears.toFixed(1)+'年' : '—'}</td>
       <td class="${s.cagr>=0?'up':'dn'}">${s.cagr>=0?'+':''}${s.cagr.toFixed(1)}%</td>
-      <td>${s.yield ? s.yield.toFixed(1)+'%' : '—'}</td>
+      <td>${yieldEst(s)?yieldEst(s).toFixed(1)+'%':'—'}</td>
       <td><b class="${(s.totalReturn||0)>=0?'up':'dn'}">${(s.totalReturn||0).toFixed(1)}%</b></td>
       <td style="font-size:11px;color:var(--soft)">${s.low10 ? fmt(s.low10,1)+'~'+fmt(s.high10,1) : '—'}</td>
     </tr>`).join('');
@@ -212,37 +212,81 @@ function growthCard() {
   </div>`;
 }
 
-/* 未來資產推估 */
+/* 預期年報酬：手動 > 保守推估（歷史七折、市值型上限7%、高息上限5.5%） */
+function expReturn(s) {
+  if (s.expReturn) return s.expReturn;
+  const isDiv = yieldEst(s) >= 4;           // 殖利率≥4% 視為高股息型
+  const cap = isDiv ? 5.5 : 7;
+  if (s.totalReturn == null) return cap;
+  return Math.max(2, Math.min(cap, s.totalReturn * 0.7));
+}
+
+/* 未來資產推估 · 逐檔複利 */
 function projectionCard() {
   const liq = liquidAsset();
   if (!liq) return `<div class="card"><div class="ct">🔮 未來資產推估</div>
     <div class="empty">加入資產後即可看到 5/10/15/20 年後的資產推估與情境區間</div></div>`;
-  const hasHist = D.stocks.some(s=>s.totalReturn!=null);
-  const r = blendedReturn(), m = D.profile.monthlyInvest || 0;
-  const yrs = [5, 10, 15, 20];
-  const rows = yrs.map(y => {
-    let a = liq; const rm = r/100/12;
-    for (let i = 0; i < y*12; i++) a = a*(1+rm)+m;
-    // 保守/樂觀情境
-    let lo = liq, hi = liq;
-    const rl = Math.max(0, r-3)/100/12, rh = (r+3)/100/12;
-    for (let i = 0; i < y*12; i++) { lo = lo*(1+rl)+m; hi = hi*(1+rh)+m; }
-    return { y, a, lo, hi, age: (D.profile.age||30)+y, inc: a*(annualIncome()/liq||0.04)/12 };
+  const m = D.profile.monthlyInvest || 0;
+  const hasHist = D.stocks.some(s => s.totalReturn != null);
+
+  // 每個標的的年報酬（股票用實際歷史含息總報酬，上限15%；其他資產用自填利率）
+  const items = [];
+  D.stocks.forEach(s => items.push({ name: s.code, v: stockValue(s),
+    r: expReturn(s), hist: s.totalReturn, kind: 'stock' }));
+  D.assets.forEach(a => items.push({ name: a.name, v: a.amount || 0, r: a.rate || 0, kind: 'asset' }));
+  const totV = items.reduce((a, x) => a + x.v, 0) || 1;
+  // 新資金依「股票現有配置比例」投入（其他資產不再增額）
+  const stockV = items.filter(x => x.kind === 'stock').reduce((a, x) => a + x.v, 0);
+
+  function project(years, adj) {
+    return items.map(x => {
+      let v = x.v;
+      const rm = Math.max(-0.5, (x.r + adj)) / 100 / 12;
+      // 月投入分配：股票依各自佔股票池比例；無股票則平均進所有資產
+      const share = x.kind === 'stock'
+        ? (stockV ? x.v / stockV : 0)
+        : (stockV ? 0 : x.v / totV);
+      for (let i = 0; i < years * 12; i++) v = v * (1 + rm) + m * share;
+      return { name: x.name, v, r: x.r };
+    });
+  }
+
+  const rows = [5, 10, 15, 20].map(y => {
+    const base = project(y, 0), lo = project(y, -3), hi = project(y, 3);
+    const sum = a => a.reduce((s, x) => s + x.v, 0);
+    return { y, age: (D.profile.age || 30) + y, a: sum(base), lo: sum(lo), hi: sum(hi), detail: base };
   });
-  const max = rows[rows.length-1].hi;
+  const max = rows[rows.length - 1].hi;
+  const y20 = rows[rows.length - 1];
+  // 實效年化（回推）
+  const eff = (Math.pow(rows[0].a / liq, 1 / 5) - 1) * 100;
+
   return `<div class="card">
     <div class="ct">🔮 未來資產推估</div>
-    <div class="cs">以目前配置加權報酬 ${r.toFixed(1)}%${hasHist?'（依各檔實際10年歷史計算）':'（未更新歷史，股票暫用7%估）'}、每月投入 ${fmt(m,1)} 萬試算（±3% 為情境區間）</div>
-    ${rows.map(x=>`
+    <div class="cs">逐檔複利：每個標的用<b>自己的年化報酬</b>各自成長，不是全部套同一個數字</div>
+    <div style="overflow-x:auto;margin-bottom:16px"><table>
+      <tr><th>標的</th><th>目前(萬)</th><th>歷史年化</th><th>推估採用</th><th>20年後(萬)</th></tr>
+      ${y20.detail.filter(d => d.v > 0).sort((a, b) => b.v - a.v).map(d => {
+        const it = items.find(i => i.name === d.name);
+        return `<tr>
+        <td><b>${d.name}</b></td>
+        <td>${fmt0(it?.v || 0)}</td>
+        <td style="color:var(--soft)">${it?.hist != null ? it.hist.toFixed(1)+'%' : '—'}</td>
+        <td><b>${d.r.toFixed(1)}%</b></td>
+        <td><b>${fmt0(d.v)}</b></td></tr>`; }).join('')}
+    </table></div>
+    ${rows.map(x => `
       <div style="margin-bottom:13px">
         <div class="mini"><span><b>${x.y} 年後</b> · ${x.age} 歲</span><span><b style="font-size:15px">${fmt0(x.a)}</b> 萬</span></div>
         <div style="position:relative;height:22px;background:var(--bg);border-radius:5px;overflow:hidden">
-          <div style="position:absolute;left:${x.lo/max*100}%;width:${(x.hi-x.lo)/max*100}%;height:100%;background:rgba(184,133,74,.18)"></div>
-          <div style="position:absolute;left:0;width:${x.a/max*100}%;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-d));border-radius:5px"></div>
+          <div style="position:absolute;left:${x.lo / max * 100}%;width:${(x.hi - x.lo) / max * 100}%;height:100%;background:rgba(184,133,74,.18)"></div>
+          <div style="position:absolute;left:0;width:${x.a / max * 100}%;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-d));border-radius:5px"></div>
         </div>
-        <div style="font-size:10.5px;color:var(--soft);margin-top:2px">保守 ${fmt0(x.lo)} ~ 樂觀 ${fmt0(x.hi)} 萬 · 屆時月被動收入約 ${fmt(x.inc,1)} 萬</div>
+        <div style="font-size:10.5px;color:var(--soft);margin-top:2px">保守 ${fmt0(x.lo)} ~ 樂觀 ${fmt0(x.hi)} 萬（各檔報酬 ±3%）</div>
       </div>`).join('')}
-    <div class="note">📌 此為複利推估，不保證實現。市場短期波動遠大於此曲線，長期紀律才是關鍵。</div>
+    <div class="note">📌 每月投入 ${fmt(m, 1)} 萬依<b>目前股票配置比例</b>分配，整體實效年化約 ${eff.toFixed(1)}%。<br>
+      ⚠️ <b>為什麼推估報酬低於歷史？</b> 過去十年台股處於少見的大多頭，若直接把 20% 外推二十年會得到極不合理的天文數字。系統預設採<b>保守值</b>（市值型 7%、高股息 5.5%，且不超過歷史的七成），這是長期規劃該用的假設。<br>
+      💡 每檔可到「股票 → 編輯」自訂「預期年報酬」，改成你自己的判斷。</div>
   </div>`;
 }
 
@@ -269,8 +313,13 @@ function stockForm(id) {
     </div>
     <div class="row">
       <div class="fg"><label class="fl">現價</label><input class="fi" id="f_price" type="number" step="0.01" value="${s?.price ?? ''}" placeholder="留空自動抓"></div>
-      <div class="fg"><label class="fl">年殖利率 %</label><input class="fi" id="f_yield" type="number" step="0.1" value="${s?.yield ?? ''}" placeholder="如 5"></div>
-    </div>`, async () => {
+      <div class="fg"><label class="fl">年殖利率 %</label><input class="fi" id="f_yield" type="number" step="0.1" value="${s?.yield ?? ''}" placeholder="更新後自動"></div>
+    </div>
+    <div class="row">
+      <div class="fg"><label class="fl">下期配息（元/股）</label><input class="fi" id="f_divov" type="number" step="0.01" value="${s?.divOverride ?? ''}" placeholder="${s?.lastDivAmount ? '預設 '+s.lastDivAmount : '投信公告後可填'}"></div>
+      <div class="fg"><label class="fl">預期年報酬 %</label><input class="fi" id="f_exp" type="number" step="0.1" value="${s?.expReturn ?? ''}" placeholder="${s ? '預設 '+expReturn(s).toFixed(1) : '保守推估'}"></div>
+    </div>
+    <div style="font-size:11px;color:var(--soft);margin-bottom:6px">💡 預期年報酬用於「未來資產推估」，留空則用系統保守值（歷史七折、市值型上限7%、高息上限5.5%）</div>`, async () => {
     const code = document.getElementById('f_code').value.trim().toUpperCase();
     const lots = parseFloat(document.getElementById('f_lots').value);
     const cost = parseFloat(document.getElementById('f_cost').value);
@@ -281,6 +330,8 @@ function stockForm(id) {
     o.lots = lots; o.cost = cost;
     o.price = parseFloat(document.getElementById('f_price').value) || o.price || 0;
     o.yield = parseFloat(document.getElementById('f_yield').value) || 0;
+    o.divOverride = parseFloat(document.getElementById('f_divov').value) || 0;
+    o.expReturn = parseFloat(document.getElementById('f_exp').value) || 0;
     if (!s) D.stocks.push(o);
     save(); render();
     if (!o.price || !o.name) {
@@ -373,19 +424,19 @@ function syncRate() {
 function renderDividends() {
   const el = document.getElementById('p-dividends');
   const withDiv = D.stocks.filter(s => s.lastDivDate || s.yield);
-  const annual = D.stocks.reduce((a,s)=>a+stockValue(s)*(s.yield||0)/100, 0);
+  const annual = D.stocks.reduce((a,s)=>a+annualDivEst(s)*(s.lots||0)*1000/10000, 0);
   // 預估未來 12 個月配息行事曆
   const cal = [];
   D.stocks.forEach(s => {
     if (!s.lastDivDate || !s.freq) return;
     const gap = 365/s.freq;
-    const per = s.avgAnnualDiv ? s.avgAnnualDiv/s.freq : (s.lastDivAmount||0);
+    const per = perDivEst(s);
     let d = new Date(s.lastDivDate*1000);
     for (let i=0;i<s.freq+1;i++) {
       d = new Date(d.getTime()+gap*86400000);
       if (d > new Date() && d < new Date(Date.now()+400*86400000)) {
         cal.push({ code:s.code, ex:d, pay:new Date(d.getTime()+38*86400000),
-                   amt:per*(s.lots||0)*1000, per, est:true });
+                   amt:per*(s.lots||0)*1000, per, src:s.divOverride?'自訂':'最近一次', est:true });
       }
     }
   });
@@ -409,12 +460,12 @@ function renderDividends() {
         const days = Math.ceil((c.ex-new Date())/86400000);
         return `<div class="item">
           <span class="dot" style="background:${days<=14?'var(--gold)':'var(--line)'}"></span>
-          <div><div class="n">${c.code} <span style="font-weight:400;font-size:11.5px;color:var(--soft)">每股約 ${fmt(c.per,2)} 元</span></div>
+          <div><div class="n">${c.code} <span style="font-weight:400;font-size:11.5px;color:var(--soft)">每股 ${fmt(c.per,2)} 元（${c.src}）</span></div>
           <div class="m">除息 ${c.ex.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})} · 入帳 ${c.pay.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})} · ${days} 天後</div></div>
           <div class="r"><div class="v up">${fmt0(c.amt)}</div><div style="font-size:10px;color:var(--soft)">元</div></div>
         </div>`;
       }).join('') : '<div class="empty">尚無資料<br>請先到「股票」按更新，系統會自動抓取配息歷史</div>'}
-      <div style="font-size:11px;color:var(--soft);margin-top:8px">※ 均為依歷史推估，實際金額與日期以各投信公告為準</div>
+      <div style="font-size:11px;color:var(--soft);margin-top:8px">※ 金額以<b>最近一次實際配息</b>推估，日期依歷史頻率估算；實際請以各投信公告為準<br>※ 投信已公告下期金額時，可到「股票」編輯該檔的「下期配息」欄位手動覆寫</div>
     </div>
 
     <div class="card">
@@ -431,11 +482,12 @@ function renderDividends() {
     <div class="card">
       <div class="ct">📊 各檔配息貢獻</div><div class="cs">依目前持股與殖利率估算年配息</div>
       ${!D.stocks.length ? '<div class="empty">尚未加入持股</div>' : !D.stocks.some(s=>s.yield) ? '<div class="empty">尚無殖利率資料<br>到「股票」按更新即可自動取得</div>' : ''}
-      ${D.stocks.filter(s=>s.yield).sort((a,b)=>stockValue(b)*b.yield-stockValue(a)*a.yield).map(s=>{
-        const d=stockValue(s)*s.yield/100, pctv=annual?d/annual*100:0;
-        const yoc = s.cost? (s.yield*s.price/s.cost) : 0;
+      ${D.stocks.filter(s=>annualDivEst(s)>0).sort((a,b)=>annualDivEst(b)*b.lots-annualDivEst(a)*a.lots).map(s=>{
+        const d=annualDivEst(s)*(s.lots||0)*1000/10000, pctv=annual?d/annual*100:0;
+        const yr = yieldEst(s);
+        const yoc = s.cost? (annualDivEst(s)/s.cost*100) : 0;
         return `<div style="margin-bottom:11px">
-          <div class="mini"><span><b>${s.code}</b> ${s.yield.toFixed(1)}%${yoc?` <span style="color:var(--green)">(成本殖利率 ${yoc.toFixed(1)}%)</span>`:''}</span><span><b>${fmt(d,1)}</b> 萬/年</span></div>
+          <div class="mini"><span><b>${s.code}</b> ${yr.toFixed(1)}%${yoc?` <span style="color:var(--green)">(成本殖利率 ${yoc.toFixed(1)}%)</span>`:''}</span><span><b>${fmt(d,1)}</b> 萬/年</span></div>
           <div class="bar"><div style="width:${pctv}%;background:var(--gold)"></div></div>
         </div>`;
       }).join('')}
@@ -443,6 +495,34 @@ function renderDividends() {
     </div>
   `;
 }
+/* ===== 配息估算規則（全站統一）=====
+   每期（行事曆用）：手動覆寫 > 最近一次實際配息
+   年度（殖利率/被動收入/貢獻用）：手動×頻率 > 近12個月實際合計 > 最近一次×頻率
+   註：不用「最近一次×頻率」當預設，因各期金額差異大會失真 */
+function perDivEst(s) {
+  if (s.divOverride) return s.divOverride;
+  if (s.lastDivAmount) return s.lastDivAmount;
+  const h = s.divHistory || [];
+  return h.length ? h.slice(-4).reduce((a, d) => a + d.amount, 0) / Math.min(4, h.length) : 0;
+}
+function sumLast12(s) {
+  if (s.annual12) return s.annual12;
+  const h = s.divHistory || [];
+  if (!h.length) return 0;
+  const now = Date.now() / 1000;
+  const v = h.filter(d => now - d.date < 365 * 86400).reduce((a, d) => a + d.amount, 0);
+  return v || (s.lastDivAmount || 0) * (s.freq || 4);
+}
+function annualDivEst(s) {
+  if (s.divOverride) return s.divOverride * (s.freq || 4);
+  return sumLast12(s) || perDivEst(s) * (s.freq || 4);
+}
+/* 殖利率（與年配息同源，確保一致） */
+function yieldEst(s) {
+  if (s.price && annualDivEst(s)) return annualDivEst(s) / s.price * 100;
+  return s.yield || 0;
+}
+
 function divForm() {
   modal('記錄領息', `
     <div class="row">
