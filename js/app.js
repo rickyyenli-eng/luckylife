@@ -369,18 +369,23 @@ function renderAssets() {
   el.innerHTML = `
     <div class="card">
       <div class="ct">💰 其他資產 <button class="btn b1 bs" onclick="assetForm()">+ 新增</button></div>
-      <div class="cs">定存、儲蓄險、黃金、債券…自訂類別與預估年報酬率</div>
+      <div class="cs">定存、儲蓄險、加密貨幣、黃金、債券…可自動報價或手動填值</div>
+      ${D.assets.some(a=>ASSET_TYPES[a.type]?.quote && a.qty) ? `<button class="btn b2 full" id="btnUpdAsset" style="margin-bottom:12px" onclick="doUpdateAssets()">🔄 更新報價（加密貨幣 · 黃金 · ETF）</button>` : ''}
       ${D.assets.length ? `
         <div class="grid" style="margin:0 0 14px">
           <div class="st"><div class="l">合計</div><div class="v">${fmt(tot)} 萬</div></div>
-          <div class="st"><div class="l">年產生收益</div><div class="v up">${fmt(D.assets.reduce((a, x) => a + (x.amount || 0) * (x.rate || 0) / 100, 0), 2)} 萬</div></div>
+          <div class="st"><div class="l">年產生收益</div><div class="v up">${fmt(D.assets.reduce((a, x) => a + assetValue(x) * (x.rate || 0) / 100, 0), 2)} 萬</div></div>
         </div>
         ${D.assets.map(a => {
           const t = ASSET_TYPES[a.type] || ASSET_TYPES.other;
+          const v = assetValue(a), c = assetCost(a);
+          const pnl = c ? (v - c) / c * 100 : null;
+          const qtyInfo = a.qty ? `${fmt(a.qty, a.qty<1?4:2).replace(/\.?0+$/,'')} ${t.unit||''} × ${a.currency==='USD'?'$':''}${fmt(a.price, a.price<10?4:2)}` : '';
           return `<div class="item">
             <span class="dot" style="background:${t.color}"></span>
-            <div><div class="n">${t.icon} ${a.name}</div><div class="m">${t.name}${a.rate ? ` · ${a.rate}%` : ''}${a.maturity ? ` · 到期 ${a.maturity}` : ''}${a.note ? ` · ${a.note}` : ''}</div>${matBadge(a)}</div>
-            <div class="r"><div class="v">${fmt(a.amount)} 萬</div></div>
+            <div style="min-width:0"><div class="n">${t.icon} ${a.name}${a.symbol?` <span style="font-size:11px;color:var(--soft)">${a.symbol}</span>`:''}</div>
+              <div class="m">${qtyInfo || t.name}${a.rate ? ` · ${a.rate}%` : ''}${a.maturity ? ` · 到期 ${a.maturity}` : ''}${a.chg24!=null?` · 24h <span class="${a.chg24>=0?'up':'dn'}">${a.chg24>=0?'+':''}${a.chg24.toFixed(1)}%</span>`:''}</div>${matBadge(a)}</div>
+            <div class="r"><div class="v">${fmt(v)} 萬</div>${pnl!=null?`<div style="font-size:10.5px" class="${pnl>=0?'up':'dn'}">${pnl>=0?'+':''}${pnl.toFixed(1)}%</div>`:''}</div>
             <button class="x" onclick="assetForm('${a.id}')">✎</button><button class="x" onclick="del('assets','${a.id}')">×</button>
           </div>`;
         }).join('')}
@@ -398,14 +403,28 @@ function matBadge(a){
 function assetForm(id) {
   const a = id ? D.assets.find(x => x.id === id) : null;
   modal(`${a ? '編輯' : '新增'}資產`, `
-    <div class="fg"><label class="fl">類別</label><select class="fi" id="f_type" onchange="syncRate()">
+    <div class="fg"><label class="fl">類別</label><select class="fi" id="f_type" onchange="syncRate();syncQuote()">
       ${Object.entries(ASSET_TYPES).map(([k, v]) => `<option value="${k}" ${a?.type === k ? 'selected' : ''}>${v.icon} ${v.name}</option>`).join('')}
     </select></div>
     <div class="fg"><label class="fl">名稱 *</label><input class="fi" id="f_name" value="${a?.name || ''}" placeholder="如：台銀一年期定存"></div>
-    <div class="row">
+
+    <div id="f_qtybox" style="display:none">
+      <div class="row">
+        <div class="fg"><label class="fl" id="f_symlabel">代號</label><input class="fi" id="f_symbol" value="${a?.symbol || ''}" placeholder="BTC / USDT / TLT"></div>
+        <div class="fg"><label class="fl" id="f_qtylabel">數量</label><input class="fi" id="f_qty" type="number" step="any" value="${a?.qty ?? ''}"></div>
+      </div>
+      <div class="row">
+        <div class="fg"><label class="fl">目前單價</label><input class="fi" id="f_price" type="number" step="any" value="${a?.price ?? ''}" placeholder="留空自動抓"></div>
+        <div class="fg"><label class="fl">平均成本（單價）</label><input class="fi" id="f_costp" type="number" step="any" value="${a?.costPrice ?? ''}" placeholder="選填，可算損益"></div>
+      </div>
+      <div style="font-size:11px;color:var(--soft);margin-bottom:10px" id="f_qtyhint"></div>
+    </div>
+
+    <div class="row" id="f_amtbox">
       <div class="fg"><label class="fl">金額（萬）*</label><input class="fi" id="f_amt" type="number" step="0.1" value="${a?.amount ?? ''}"></div>
       <div class="fg"><label class="fl">預估年報酬 %</label><input class="fi" id="f_rate" type="number" step="0.1" value="${a?.rate ?? ''}"></div>
     </div>
+    <div class="fg" id="f_ratebox2" style="display:none"><label class="fl">預估年報酬 %</label><input class="fi" id="f_rate2" type="number" step="0.1" value="${a?.rate ?? ''}" placeholder="用於推估，選填"></div>
     <div class="row">
       <div class="fg"><label class="fl">到期日（選填）</label><input class="fi" type="date" id="f_mat" value="${a?.maturity || ''}"></div>
       <div class="fg"><label class="fl">配息方式</label><select class="fi" id="f_payout">
@@ -415,21 +434,73 @@ function assetForm(id) {
         <option value="maturity" ${a?.payout==='maturity'?'selected':''}>到期一次領</option>
       </select></div>
     </div>
-    <div class="fg"><label class="fl">備註</label><input class="fi" id="f_note" value="${a?.note || ''}" placeholder="如：中國信託一年期"></div>`, () => {
+    <div class="fg"><label class="fl">備註</label><input class="fi" id="f_note" value="${a?.note || ''}" placeholder="如：中國信託一年期"></div>`, async () => {
     const name = document.getElementById('f_name').value.trim();
+    const type = document.getElementById('f_type').value;
+    const isQ = !!ASSET_TYPES[type]?.quote;
+    const qty = parseFloat(document.getElementById('f_qty').value);
     const amt = parseFloat(document.getElementById('f_amt').value);
-    if (!name || isNaN(amt)) { toast('名稱與金額為必填', 1); return false; }
+    if (!name) { toast('請填名稱', 1); return false; }
+    if (isQ && !qty) { toast('請填數量', 1); return false; }
+    if (!isQ && isNaN(amt)) { toast('請填金額', 1); return false; }
     const o = a || { id: uid('a') };
-    o.type = document.getElementById('f_type').value;
-    o.name = name; o.amount = amt;
-    o.rate = parseFloat(document.getElementById('f_rate').value) || 0;
+    o.type = type; o.name = name;
+    if (isQ) {
+      o.symbol = document.getElementById('f_symbol').value.trim().toUpperCase();
+      o.qty = qty;
+      o.price = parseFloat(document.getElementById('f_price').value) || o.price || 0;
+      o.costPrice = parseFloat(document.getElementById('f_costp').value) || 0;
+      o.amount = 0;
+      o.rate = parseFloat(document.getElementById('f_rate2').value) || 0;
+    } else {
+      o.amount = amt; o.qty = 0; o.symbol = '';
+      o.rate = parseFloat(document.getElementById('f_rate').value) || 0;
+    }
     o.note = document.getElementById('f_note').value.trim();
     o.maturity = document.getElementById('f_mat').value;
     o.payout = document.getElementById('f_payout').value;
     if (!a) D.assets.push(o);
-    save(); render(); return true;
+    save(); render();
+    if (isQ && !o.price) { toast('抓取報價中…'); await updateAssetPrices(); render(); }
+    return true;
   });
-  if (!a) syncRate();
+  syncQuote(); if (!a) syncRate();
+}
+
+/* 依類別切換輸入模式 */
+function syncQuote() {
+  const t = document.getElementById('f_type')?.value;
+  if (!t) return;
+  const def = ASSET_TYPES[t], isQ = !!def.quote;
+  const box = document.getElementById('f_qtybox'), amtBox = document.getElementById('f_amtbox'), rate2 = document.getElementById('f_ratebox2');
+  if (box) box.style.display = isQ ? 'block' : 'none';
+  if (amtBox) amtBox.style.display = isQ ? 'none' : 'flex';
+  if (rate2) rate2.style.display = isQ ? 'block' : 'none';
+  if (!isQ) return;
+  const sym = document.getElementById('f_symbol'), symL = document.getElementById('f_symlabel'),
+        qtyL = document.getElementById('f_qtylabel'), hint = document.getElementById('f_qtyhint');
+  if (def.quote === 'crypto') {
+    symL.textContent = '幣別代號'; sym.placeholder = 'BTC / ETH / USDT';
+    qtyL.textContent = '數量（顆）';
+    hint.innerHTML = '支援 ' + Object.keys(CRYPTO_IDS).slice(0, 10).join('、') + ' 等主流幣，價格自 CoinGecko 取得（台幣計價）';
+  } else if (def.quote === 'gold') {
+    symL.textContent = '種類'; sym.placeholder = '黃金存摺 / 金condo';
+    qtyL.textContent = '數量（公克）';
+    hint.innerHTML = '單價依<b>國際金價</b>（Yahoo GC=F）換算台幣/公克，與台銀牌價會有 1~3% 價差';
+  } else {
+    symL.textContent = '股票代號'; sym.placeholder = 'TLT / 00679B / VT';
+    qtyL.textContent = '股數';
+    hint.innerHTML = '台股填數字代號（如 00679B），美股填英文代號（如 TLT、VT）；美元標的會依即時匯率換算';
+  }
+}
+
+async function doUpdateAssets() {
+  const b = document.getElementById('btnUpdAsset');
+  b.disabled = true;
+  const r = await updateAssetPrices((i, n, c) => { b.textContent = `更新中… ${i}/${n} ${c}`; });
+  b.disabled = false; b.textContent = '🔄 更新報價（加密貨幣 · 黃金 · ETF）';
+  toast(r.fail.length ? `更新 ${r.ok} 筆，失敗：${r.fail.join(',')}` : `已更新 ${r.ok} 筆報價 ✓`, r.fail.length > 0);
+  render();
 }
 function syncRate() {
   const t = document.getElementById('f_type')?.value;

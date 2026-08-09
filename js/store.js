@@ -21,14 +21,23 @@ function setMode(m) {
 }
 function store() { return getMode() === 'session' ? sessionStorage : localStorage; }
 
+/* quote: 可自動報價的類型 | unit: 數量單位 */
 const ASSET_TYPES = {
   deposit:  { name: '定存 / 現金', icon: '💵', color: '#5b8a72', defRate: 1.5 },
   savings:  { name: '儲蓄險',      icon: '🛡️', color: '#7a9e8e', defRate: 4.0 },
-  gold:     { name: '黃金',        icon: '🥇', color: '#d4a017', defRate: 3.0 },
-  bond:     { name: '債券',        icon: '📜', color: '#6b7f9e', defRate: 3.5 },
-  fund:     { name: '基金',        icon: '📈', color: '#8e7cc3', defRate: 6.0 },
-  crypto:   { name: '加密貨幣',    icon: '₿',  color: '#e8a33d', defRate: 0 },
+  crypto:   { name: '加密貨幣',    icon: '₿',  color: '#e8a33d', defRate: 0, quote: 'crypto', unit: '顆' },
+  gold:     { name: '黃金',        icon: '🥇', color: '#d4a017', defRate: 3.0, quote: 'gold', unit: '公克' },
+  bond:     { name: '債券 / 債券ETF', icon: '📜', color: '#6b7f9e', defRate: 3.5, quote: 'ticker', unit: '股' },
+  usstock:  { name: '美股 / 海外ETF', icon: '🌎', color: '#4a7ba7', defRate: 7.0, quote: 'ticker', unit: '股' },
+  fund:     { name: '基金',        icon: '📈', color: '#8e7cc3', defRate: 6.0, unit: '單位' },
   other:    { name: '其他',        icon: '📦', color: '#a89886', defRate: 2.0 },
+};
+
+/* 常見加密貨幣（CoinGecko id 對照） */
+const CRYPTO_IDS = {
+  BTC:'bitcoin', ETH:'ethereum', USDT:'tether', USDC:'usd-coin', BNB:'binancecoin',
+  SOL:'solana', XRP:'ripple', ADA:'cardano', DOGE:'dogecoin', TRX:'tron',
+  MATIC:'matic-network', DOT:'polkadot', AVAX:'avalanche-2', LINK:'chainlink', LTC:'litecoin',
 };
 
 const DEF = {
@@ -39,6 +48,7 @@ const DEF = {
   realties: [],    // +purpose:'self'|'rent', monthlyRent, otherCost, vacancy(月/年)
   liabilities: [], // {id,name,amount,note}
   dividends: [],   // {id,date,code,amount,note}
+  fxUSD: 32,        // USD→TWD 匯率
   updated: null,
 };
 
@@ -61,7 +71,22 @@ const uid = p => p + '_' + Date.now().toString(36) + Math.random().toString(36).
 const stockValue = s => (s.lots || 0) * (s.price || 0) * 1000 / 10000;      // 萬
 const stockCost  = s => (s.lots || 0) * (s.cost || 0) * 1000 / 10000;
 const totalStock = () => D.stocks.reduce((a, s) => a + stockValue(s), 0);
-const totalOther = () => D.assets.reduce((a, x) => a + (x.amount || 0), 0);
+/* 資產市值：有「數量×單價」用算的，否則用直接填的總額 */
+function assetValue(a) {
+  if (a.qty && a.price) {
+    const twd = a.currency === 'USD' ? (D.fxUSD || 32) : 1;
+    return a.qty * a.price * twd / 10000;      // 萬元
+  }
+  return a.amount || 0;
+}
+function assetCost(a) {
+  if (a.qty && a.costPrice) {
+    const twd = a.currency === 'USD' ? (D.fxUSD || 32) : 1;
+    return a.qty * a.costPrice * twd / 10000;
+  }
+  return a.costAmount || 0;
+}
+const totalOther = () => D.assets.reduce((a, x) => a + assetValue(x), 0);
 const totalRealtyPaid = () => D.realties.reduce((a, r) => a + (r.paidAmount || 0), 0);      // 已付出的自備款/工程款
 const totalRealtyPrice = () => D.realties.reduce((a, r) => a + (r.totalPrice || 0), 0);     // 購買總價
 const totalMortgage = () => D.realties.reduce((a, r) => a + remainLoan(r), 0);              // 貸款餘額
@@ -174,7 +199,7 @@ function annualIncome() {
   const div = D.stocks.reduce((a, s) => a + (typeof annualDivEst === 'function'
     ? annualDivEst(s) * (s.lots || 0) * 1000 / 10000
     : stockValue(s) * (s.yield || 0) / 100), 0);
-  const oth = D.assets.reduce((a, x) => a + (x.amount || 0) * (x.rate || 0) / 100, 0);
+  const oth = D.assets.reduce((a, x) => a + assetValue(x) * (x.rate || 0) / 100, 0);
   const rent = D.realties.reduce((a, r) => a + (r.purpose === 'rent' ? annualRent(r) - annualRentCost(r) : 0), 0);
   return div + oth + rent;
 }
@@ -184,7 +209,7 @@ function blendedReturn() {
   if (!tot) return 5;
   let w = 0;
   D.stocks.forEach(s => { w += stockValue(s) * (typeof expReturn==='function' ? expReturn(s) : 7); });
-  D.assets.forEach(x => { w += (x.amount || 0) * (x.rate || 0); });
+  D.assets.forEach(x => { w += assetValue(x) * (x.rate || 0); });
   return w / tot;
 }
 /* 若要在指定年數內達標，每月需投入多少（萬） */

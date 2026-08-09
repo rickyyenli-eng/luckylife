@@ -99,3 +99,95 @@ async function updateAllPrices(onProgress) {
   save();
   return { ok, fail };
 }
+
+/* ===== 非台股報價來源 ===== */
+
+// 加密貨幣（CoinGecko，免費免金鑰）
+async function fetchCrypto(symbols) {
+  const ids = symbols.map(s => CRYPTO_IDS[s.toUpperCase()] || s.toLowerCase()).filter(Boolean);
+  if (!ids.length) return {};
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=twd,usd&include_24hr_change=true`;
+  let j = null;
+  try { const r = await fetch(url, { signal: AbortSignal.timeout(10000) }); if (r.ok) j = await r.json(); } catch (e) {}
+  if (!j) j = await tryFetch(url);          // 失敗改走 proxy
+  if (!j) return {};
+  const out = {};
+  symbols.forEach(s => {
+    const id = CRYPTO_IDS[s.toUpperCase()] || s.toLowerCase();
+    if (j[id]) out[s.toUpperCase()] = { twd: j[id].twd, usd: j[id].usd, chg: j[id].twd_24h_change };
+  });
+  return out;
+}
+
+// 黃金（Yahoo 黃金期貨 GC=F，美元/盎司 → 台幣/公克）
+async function fetchGold() {
+  const j = await tryFetch('https://query1.finance.yahoo.com/v8/finance/chart/GC=F');
+  const m = j?.chart?.result?.[0]?.meta;
+  if (!m?.regularMarketPrice) return null;
+  const fx = await fetchFX();
+  const perGramTWD = m.regularMarketPrice * fx / 31.1035;
+  return { usdPerOz: m.regularMarketPrice, twdPerGram: perGramTWD, fx };
+}
+
+// 匯率 USD→TWD
+async function fetchFX() {
+  const j = await tryFetch('https://api.exchangerate-api.com/v4/latest/USD');
+  const v = j?.rates?.TWD;
+  if (v) { D.fxUSD = v; }
+  return v || D.fxUSD || 32;
+}
+
+// 美股 / 海外 ETF / 債券ETF（Yahoo，自動判斷台股或美股）
+async function fetchTicker(code) {
+  const sufs = /^\d/.test(code) ? ['.TW', '.TWO'] : [''];   // 數字開頭視為台股
+  for (const suf of sufs) {
+    const j = await tryFetch(`https://query1.finance.yahoo.com/v8/finance/chart/${code}${suf}`);
+    const m = j?.chart?.result?.[0]?.meta;
+    if (m?.regularMarketPrice) return {
+      price: m.regularMarketPrice, name: (m.shortName || '').trim(),
+      currency: m.currency || (suf ? 'TWD' : 'USD'),
+    };
+  }
+  return null;
+}
+
+/* 更新所有可報價的其他資產 */
+async function updateAssetPrices(onProgress) {
+  let ok = 0; const fail = [];
+  const cryptos = D.assets.filter(a => ASSET_TYPES[a.type]?.quote === 'crypto' && a.symbol && a.qty);
+  const golds   = D.assets.filter(a => ASSET_TYPES[a.type]?.quote === 'gold' && a.qty);
+  const tickers = D.assets.filter(a => ASSET_TYPES[a.type]?.quote === 'ticker' && a.symbol && a.qty);
+  const total = (cryptos.length ? 1 : 0) + (golds.length ? 1 : 0) + tickers.length;
+  let step = 0;
+
+  if (cryptos.length) {
+    if (onProgress) onProgress(++step, total, '加密貨幣');
+    const q = await fetchCrypto(cryptos.map(a => a.symbol));
+    cryptos.forEach(a => {
+      const r = q[a.symbol.toUpperCase()];
+      if (r) { a.price = r.twd; a.currency = 'TWD'; a.chg24 = r.chg; a.updated = new Date().toISOString(); ok++; }
+      else fail.push(a.symbol);
+    });
+  }
+  if (golds.length) {
+    if (onProgress) onProgress(++step, total, '黃金');
+    const g = await fetchGold();
+    if (g) golds.forEach(a => { a.price = g.twdPerGram; a.currency = 'TWD'; a.updated = new Date().toISOString(); ok++; });
+    else fail.push('黃金');
+  }
+  for (const a of tickers) {
+    if (onProgress) onProgress(++step, total, a.symbol);
+    const t = await fetchTicker(a.symbol);
+    if (t) {
+      a.price = t.price; a.currency = t.currency === 'TWD' ? 'TWD' : 'USD';
+      if (!a.name || a.name === ASSET_TYPES[a.type].name) {
+        const n = (t.name || '').trim();
+        a.name = (!n || n.length > 18) ? a.symbol : n;   // 名稱過長（投信全名）就用代號
+      }
+      a.updated = new Date().toISOString(); ok++;
+    } else fail.push(a.symbol);
+  }
+  if (D.assets.some(a => a.currency === 'USD')) await fetchFX();
+  save();
+  return { ok, fail };
+}
